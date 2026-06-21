@@ -1,0 +1,22 @@
+[package]
+name = "his-domain"
+description = "Shared FHIR client and bundle helpers for Atrius HIS domain services"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+fhir-validation = { path = "../../../atrius-hfs/crates/fhir-validation" }
+helios-fhir = { path = "../../../atrius-hfs/crates/fhir", features = ["R4"] }

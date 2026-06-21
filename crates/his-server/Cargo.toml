@@ -1,0 +1,26 @@
+[package]
+name = "his-server"
+description = "Atrius HIS domain services HTTP API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "his-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+his-domain = { path = "../his-domain" }
+his-registration = { path = "../his-registration" }
+his-scheduling = { path = "../his-scheduling" }
+his-adt = { path = "../his-adt" }
+his-documentation = { path = "../his-documentation" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
