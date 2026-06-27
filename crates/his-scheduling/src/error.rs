@@ -1,4 +1,3 @@
-use his_domain::resources_from_search_bundle;
 use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
@@ -13,6 +12,10 @@ pub enum SchedulingError {
     AppointmentNotActive(String),
     #[error("patient not found: {0}")]
     PatientNotFound(String),
+    #[error("schedule not found: {0}")]
+    ScheduleNotFound(String),
+    #[error("schedule expansion failed: {0}")]
+    Expand(String),
     #[error("FHIR error: {0}")]
     Fhir(#[from] anyhow::Error),
 }

@@ -7,10 +7,13 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use his_documentation::{
     ConsultationNoteListResponse, ConsultationNoteResponse, CreateConsultationNoteRequest,
-    DocumentationError, FinalizeConsultationNoteRequest, UpdateConsultationNoteRequest,
+    CreateDischargeSummaryRequest, DischargeSummaryResponse, DocumentationError,
+    DocumentBundleResponse, FinalizeConsultationNoteRequest, FinalizeDischargeSummaryRequest,
+    UpdateConsultationNoteRequest, UpdateDischargeSummaryRequest,
 };
 use serde_json::json;
 
+use crate::request_auth::RequestAuth;
 use crate::state::AppState;
 
 pub fn routes() -> Router<Arc<AppState>> {
@@ -25,41 +28,63 @@ pub fn routes() -> Router<Arc<AppState>> {
             "/encounters/{encounter_id}/consultation-notes",
             get(list_consultation_notes),
         )
+        .route("/discharge-summaries", post(create_discharge_summary))
+        .route(
+            "/discharge-summaries/{id}",
+            get(get_discharge_summary).put(update_discharge_summary),
+        )
+        .route(
+            "/discharge-summaries/{id}/finalize",
+            post(finalize_discharge_summary),
+        )
+        .route(
+            "/consultation-notes/{id}/export",
+            post(export_consultation_note),
+        )
+        .route(
+            "/discharge-summaries/{id}/export",
+            post(export_discharge_summary),
+        )
 }
 
 async fn create_consultation_note(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Json(req): Json<CreateConsultationNoteRequest>,
 ) -> Result<Json<ConsultationNoteResponse>, ApiError> {
-    Ok(Json(state.documentation.create_consultation_note(&req).await?))
+    Ok(Json(state.services(&auth).documentation.create_consultation_note(&req).await?))
 }
 
 async fn get_consultation_note(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     Ok(Json(
-        state.documentation.read_consultation_note(&id).await?,
+        state.services(&auth).documentation.read_consultation_note(&id).await?,
     ))
 }
 
 async fn update_consultation_note(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
     Json(req): Json<UpdateConsultationNoteRequest>,
 ) -> Result<Json<ConsultationNoteResponse>, ApiError> {
     Ok(Json(
-        state.documentation.update_consultation_note(&id, &req).await?,
+        state.services(&auth).documentation.update_consultation_note(&id, &req).await?,
     ))
 }
 
 async fn finalize_consultation_note(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
     Json(req): Json<FinalizeConsultationNoteRequest>,
 ) -> Result<Json<ConsultationNoteResponse>, ApiError> {
     Ok(Json(
         state
+            .services(&auth)
             .documentation
             .finalize_consultation_note(&id, &req)
             .await?,
@@ -68,15 +93,74 @@ async fn finalize_consultation_note(
 
 async fn list_consultation_notes(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(encounter_id): Path<String>,
 ) -> Result<Json<ConsultationNoteListResponse>, ApiError> {
     Ok(Json(
-        state.documentation.list_by_encounter(&encounter_id).await?,
+        state.services(&auth).documentation.list_by_encounter(&encounter_id).await?,
     ))
 }
 
+async fn create_discharge_summary(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Json(req): Json<CreateDischargeSummaryRequest>,
+) -> Result<Json<DischargeSummaryResponse>, ApiError> {
+    Ok(Json(state.services(&auth).documentation.create_discharge_summary(&req).await?))
+}
+
+async fn get_discharge_summary(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    Ok(Json(state.services(&auth).documentation.read_discharge_summary(&id).await?))
+}
+
+async fn update_discharge_summary(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateDischargeSummaryRequest>,
+) -> Result<Json<DischargeSummaryResponse>, ApiError> {
+    Ok(Json(
+        state.services(&auth).documentation.update_discharge_summary(&id, &req).await?,
+    ))
+}
+
+async fn finalize_discharge_summary(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+    Json(req): Json<FinalizeDischargeSummaryRequest>,
+) -> Result<Json<DischargeSummaryResponse>, ApiError> {
+    Ok(Json(
+        state
+            .services(&auth)
+            .documentation
+            .finalize_discharge_summary(&id, &req)
+            .await?,
+    ))
+}
+
+async fn export_consultation_note(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+) -> Result<Json<DocumentBundleResponse>, ApiError> {
+    Ok(Json(state.services(&auth).documentation.export_document_bundle(&id).await?))
+}
+
+async fn export_discharge_summary(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+) -> Result<Json<DocumentBundleResponse>, ApiError> {
+    Ok(Json(state.services(&auth).documentation.export_document_bundle(&id).await?))
+}
+
 #[derive(Debug)]
-struct ApiError(DocumentationError);
+pub(crate) struct ApiError(DocumentationError);
 
 impl From<DocumentationError> for ApiError {
     fn from(value: DocumentationError) -> Self {
@@ -114,6 +198,15 @@ impl IntoResponse for ApiError {
                 })),
             )
                 .into_response(),
+            DocumentationError::EncounterNotInpatient(class_code) => (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "encounter_not_inpatient",
+                    "message": self.0.to_string(),
+                    "class": class_code
+                })),
+            )
+                .into_response(),
             DocumentationError::CompositionNotEditable(status) => (
                 StatusCode::CONFLICT,
                 Json(json!({
@@ -127,6 +220,15 @@ impl IntoResponse for ApiError {
                 StatusCode::CONFLICT,
                 Json(json!({
                     "error": "composition_not_preliminary",
+                    "message": self.0.to_string(),
+                    "status": status
+                })),
+            )
+                .into_response(),
+            DocumentationError::CompositionNotFinal(status) => (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "composition_not_final",
                     "message": self.0.to_string(),
                     "status": status
                 })),

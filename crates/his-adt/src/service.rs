@@ -2,8 +2,11 @@ use his_domain::{
     FhirClient, active_bed_id, admit_transaction, appointment_location_id,
     appointment_patient_id, appointment_practitioner_id, build_ambulatory_encounter,
     build_inpatient_encounter, build_inpatient_episode_of_care, discharge_transaction,
-    finish_episode_of_care, is_bed_available, operational_status_code, primary_episode_of_care_id,
-    resources_from_search_bundle, start_visit_transaction, transfer_transaction,
+    encounter_active_location_id, encounter_appointment_id, encounter_class_code,
+    encounter_patient_id, encounter_reason_text, finish_episode_of_care,
+    finish_visit_transaction, is_bed_available, operational_status_code,
+    patient_display_name, primary_episode_of_care_id, resources_from_search_bundle,
+    start_visit_transaction, transfer_transaction,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -80,6 +83,19 @@ pub struct StartVisitResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinishVisitRequest {
+    pub encounter_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FinishVisitResponse {
+    pub encounter_id: String,
+    pub appointment_id: String,
+    pub encounter: Value,
+    pub appointment: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BedBoardQuery {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ward_id: Option<String>,
@@ -101,6 +117,38 @@ pub struct BedBoardEntry {
 pub struct BedBoardResponse {
     pub count: usize,
     pub beds: Vec<BedBoardEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PractitionerEncountersQuery {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncounterSummary {
+    pub encounter_id: String,
+    pub patient_id: Option<String>,
+    pub patient_name: Option<String>,
+    pub status: String,
+    pub class_code: Option<String>,
+    pub class_display: Option<String>,
+    pub reason: Option<String>,
+    pub location_id: Option<String>,
+    pub location_name: Option<String>,
+    pub bed_id: Option<String>,
+    pub ward_id: Option<String>,
+    pub period_start: Option<String>,
+    pub appointment_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PractitionerEncountersResponse {
+    pub practitioner_id: String,
+    pub count: usize,
+    pub encounters: Vec<EncounterSummary>,
 }
 
 #[derive(Clone)]
@@ -304,6 +352,80 @@ impl AdtService {
         })
     }
 
+    pub async fn finish_visit(
+        &self,
+        req: &FinishVisitRequest,
+    ) -> Result<FinishVisitResponse, AdtError> {
+        if req.encounter_id.trim().is_empty() {
+            return Err(AdtError::InvalidRequest("encounter_id is required".into()));
+        }
+
+        let encounter = self.read_encounter(&req.encounter_id).await?;
+        let status = encounter
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        if status == "finished" {
+            return Err(AdtError::VisitAlreadyFinished {
+                encounter_id: req.encounter_id.clone(),
+                status: status.to_string(),
+            });
+        }
+        if status != "in-progress" {
+            return Err(AdtError::EncounterNotActive(status.to_string()));
+        }
+
+        let class_code = encounter
+            .get("class")
+            .and_then(|c| c.get("code"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        if class_code != "AMB" {
+            return Err(AdtError::InvalidRequest(format!(
+                "finish-visit applies to ambulatory encounters (class=AMB), got {class_code}"
+            )));
+        }
+
+        let appointment_id = encounter_appointment_id(&encounter).ok_or_else(|| {
+            AdtError::InvalidRequest(
+                "encounter has no linked Appointment; cannot finish OPD visit".into(),
+            )
+        })?;
+
+        let appointment = self.read_appointment(&appointment_id).await?;
+        let appt_status = appointment
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        if appt_status != "arrived" && appt_status != "fulfilled" {
+            return Err(AdtError::AppointmentNotBookable {
+                appointment_id: appointment_id.clone(),
+                status: appt_status.to_string(),
+            });
+        }
+
+        let bundle = finish_visit_transaction(&encounter, &appointment);
+        debug!(
+            encounter_id = %req.encounter_id,
+            appointment_id = %appointment_id,
+            "finish-visit transaction"
+        );
+        self.fhir
+            .post_transaction(&bundle)
+            .await
+            .map_err(AdtError::from_fhir)?;
+
+        let finished_encounter = self.read_encounter(&req.encounter_id).await?;
+        let updated_appointment = self.read_appointment(&appointment_id).await?;
+
+        Ok(FinishVisitResponse {
+            encounter_id: req.encounter_id.clone(),
+            appointment_id,
+            encounter: finished_encounter,
+            appointment: updated_appointment,
+        })
+    }
+
     pub async fn read_encounter(&self, id: &str) -> Result<Value, AdtError> {
         self.fhir
             .read_resource("Encounter", id)
@@ -492,6 +614,134 @@ impl AdtService {
         entries.sort_by(|a, b| a.bed_id.cmp(&b.bed_id));
         let count = entries.len();
         Ok(BedBoardResponse { count, beds: entries })
+    }
+
+    pub async fn list_practitioner_encounters(
+        &self,
+        practitioner_id: &str,
+        query: &PractitionerEncountersQuery,
+    ) -> Result<PractitionerEncountersResponse, AdtError> {
+        if practitioner_id.trim().is_empty() {
+            return Err(AdtError::InvalidRequest(
+                "practitioner_id is required".into(),
+            ));
+        }
+
+        let status = query
+            .status
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("in-progress");
+        let practitioner_ref = format!("Practitioner/{practitioner_id}");
+
+        let bundle = self
+            .fhir
+            .search_resources(
+                "Encounter",
+                &[
+                    ("participant", practitioner_ref.as_str()),
+                    ("status", status),
+                ],
+            )
+            .await
+            .map_err(AdtError::from_fhir)?;
+
+        let mut encounters =
+            resources_from_search_bundle(&bundle).map_err(AdtError::from_fhir)?;
+
+        if let Some(class) = query.class.as_deref().filter(|s| !s.is_empty()) {
+            encounters.retain(|enc| encounter_class_code(enc).as_deref() == Some(class));
+        }
+
+        encounters.sort_by(|a, b| {
+            b.get("period")
+                .and_then(|p| p.get("start"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .cmp(
+                    a.get("period")
+                        .and_then(|p| p.get("start"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(""),
+                )
+        });
+
+        let mut summaries = Vec::with_capacity(encounters.len());
+        for enc in encounters {
+            let encounter_id = enc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let patient_id = encounter_patient_id(&enc);
+            let patient_name = if let Some(ref pid) = patient_id {
+                self.fhir
+                    .read_resource("Patient", pid)
+                    .await
+                    .ok()
+                    .and_then(|patient| patient_display_name(&patient))
+            } else {
+                None
+            };
+
+            let bed_id = active_bed_id(&enc);
+            let location_id = encounter_active_location_id(&enc);
+            let (location_name, ward_id) = if let Some(ref loc_id) = location_id {
+                match self.fhir.read_resource("Location", loc_id).await {
+                    Ok(loc) => {
+                        let name = loc
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_string);
+                        let ward = loc
+                            .get("partOf")
+                            .and_then(|p| p.get("reference"))
+                            .and_then(|r| r.as_str())
+                            .and_then(|r| r.strip_prefix("Location/"))
+                            .map(str::to_string);
+                        (name, ward)
+                    }
+                    Err(_) => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
+            summaries.push(EncounterSummary {
+                encounter_id,
+                patient_id,
+                patient_name,
+                status: enc
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                class_code: encounter_class_code(&enc),
+                class_display: enc
+                    .get("class")
+                    .and_then(|c| c.get("display"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                reason: encounter_reason_text(&enc),
+                location_id: location_id.clone(),
+                location_name,
+                bed_id: bed_id.or(location_id),
+                ward_id,
+                period_start: enc
+                    .get("period")
+                    .and_then(|p| p.get("start"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                appointment_id: encounter_appointment_id(&enc),
+            });
+        }
+
+        let count = summaries.len();
+        Ok(PractitionerEncountersResponse {
+            practitioner_id: practitioner_id.to_string(),
+            count,
+            encounters: summaries,
+        })
     }
 
     async fn read_appointment(&self, appointment_id: &str) -> Result<Value, AdtError> {

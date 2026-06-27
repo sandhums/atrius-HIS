@@ -21,6 +21,24 @@ hfs_curl() {
     "$@"
 }
 
+# POST resource JSON to HFS $validate; fail when OperationOutcome reports errors.
+validate_fhir_resource() {
+  local resource_type="$1"
+  local resource_json="$2"
+  local validate error_count
+
+  validate=$(hfs_curl -X POST "${HFS_URL}/${resource_type}/\$validate" \
+    -H "Content-Type: application/fhir+json" \
+    -H "Accept: application/fhir+json" \
+    -d "${resource_json}")
+  error_count=$(echo "${validate}" | python3 -c "import sys,json; o=json.load(sys.stdin); print(sum(1 for i in o.get('issue',[]) if i.get('severity')=='error'))")
+  echo "${resource_type} \$validate errors: ${error_count}"
+  if [[ "${error_count}" != "0" ]]; then
+    echo "${validate}" | python3 -m json.tool
+    return 1
+  fi
+}
+
 # When his-server returns no slots, probe HFS directly to distinguish seed vs tenant issues.
 diagnose_no_free_slots() {
   local schedule_id="${1:-opd-patel-schedule}"

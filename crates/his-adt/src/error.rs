@@ -23,6 +23,8 @@ pub enum AdtError {
         appointment_id: String,
         encounter_id: String,
     },
+    #[error("visit already finished (encounter={encounter_id}, status={status})")]
+    VisitAlreadyFinished { encounter_id: String, status: String },
     #[error("FHIR error: {0}")]
     Fhir(#[from] anyhow::Error),
 }

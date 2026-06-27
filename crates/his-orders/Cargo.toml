@@ -1,0 +1,16 @@
+[package]
+name = "his-orders"
+description = "CPOE lab orders for Atrius HIS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+his-domain = { path = "../his-domain" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

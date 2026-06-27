@@ -10,6 +10,7 @@ use his_registration::{
 };
 use serde_json::json;
 
+use crate::request_auth::RequestAuth;
 use crate::state::AppState;
 
 pub fn routes() -> Router<Arc<AppState>> {
@@ -21,25 +22,32 @@ pub fn routes() -> Router<Arc<AppState>> {
 
 async fn register_patient(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Json(req): Json<RegisterPatientRequest>,
 ) -> Result<Json<RegisterPatientResponse>, ApiError> {
-    let response = state.registration.register(req).await?;
+    let response = state.services(&auth).registration.register(req).await?;
     Ok(Json(response))
 }
 
 async fn check_duplicates(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Json(req): Json<RegisterPatientRequest>,
 ) -> Result<Json<DuplicateSummary>, ApiError> {
-    let summary = state.registration.check_duplicates(&req).await?;
+    let summary = state
+        .services(&auth)
+        .registration
+        .check_duplicates(&req)
+        .await?;
     Ok(Json(summary))
 }
 
 async fn get_patient(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let patient = state.registration.read_patient(&id).await?;
+    let patient = state.services(&auth).registration.read_patient(&id).await?;
     Ok(Json(patient))
 }
 

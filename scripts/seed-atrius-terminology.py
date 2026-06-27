@@ -23,9 +23,27 @@ EPISODE_OF_CARE_TYPE = "http://terminology.hl7.org/CodeSystem/episodeofcare-type
 V2_BED_STATUS = "http://terminology.hl7.org/CodeSystem/v2-0116"
 LOINC = "http://loinc.org"
 DOC_CLASS = "http://terminology.hl7.org/CodeSystem/document-classcodes"
+SNOMED = "http://snomed.info/sct"
+DIAGNOSTIC_SERVICE = "http://terminology.hl7.org/CodeSystem/v2-0074"
+OBS_CATEGORY = "http://terminology.hl7.org/CodeSystem/observation-category"
 ATRIUS_ENCOUNTER_CLASS_VS = (
     "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-encounter-class"
 )
+ATRIUS_COMPOSITION_SECTION_CODES_VS = (
+    "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-composition-section-codes"
+)
+ATRIUS_COMPOSITION_TYPE_CODES_VS = (
+    "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-composition-type-codes"
+)
+ATRIUS_OPD_SERVICE_CATEGORY_VS = (
+    "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-opd-service-category"
+)
+ATRIUS_OPD_SERVICE_TYPE_VS = (
+    "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-opd-service-type"
+)
+ATRIUS_VISIT_MODE_CS = "https://atrius.in/fhir/r4/atrius-in/CodeSystem/atrius-in-visit-mode-cs"
+ATRIUS_VISIT_MODE_VS = "https://atrius.in/fhir/r4/atrius-in/ValueSet/atrius-in-visit-mode"
+SERVICE_CATEGORY = "http://terminology.hl7.org/CodeSystem/service-category"
 HL7_ENCOUNTER_PARTICIPANT_TYPE_VS = "http://hl7.org/fhir/ValueSet/encounter-participant-type"
 
 ENCOUNTER_CLASS_CODES = [
@@ -69,10 +87,73 @@ LOINC_COMPOSITION_CODES = [
     ("29545-1", "Physical findings Narrative"),
     ("51848-0", "Evaluation note"),
     ("18776-5", "Plan of care note"),
+    ("11506-3", "Progress note"),
 ]
 
 DOC_CLASS_CODES = [
     ("clinical-note", "Clinical Note"),
+]
+
+COMPOSITION_SECTION_CODES = [
+    ("422843007", "Chief complaint section"),
+    ("425044008", "Physical exam section"),
+    ("722446000", "Allergy record"),
+    ("371529009", "History and physical report"),
+    ("422432008", "Family history section"),
+    ("721963009", "Order document"),
+    ("721912009", "Medication summary document"),
+    ("390906007", "Follow-up encounter"),
+    ("371525003", "Clinical procedure report"),
+    ("306206005", "Referral to service"),
+    ("404684003", "Clinical finding"),
+    ("371530004", "Clinical consultation report"),
+    ("1003642006", "Past medical history section"),
+    ("721981007", "Diagnostic studies report"),
+    ("1003606003", "Medication history section"),
+    ("1003640003", "History of past procedure section"),
+    ("734163000", "Care plan"),
+    ("373942005", "Discharge summary"),
+]
+
+COMPOSITION_TYPE_CODES = [
+    ("371530004", "Clinical consultation report"),
+    ("373942005", "Discharge summary"),
+    ("419891008", "Record artifact"),
+    ("41000179103", "Immunization record"),
+    ("440545006", "Prescription record"),
+    ("371525003", "Clinical procedure report"),
+]
+
+COMPOSITION_TYPE_LOINC_CODES = [
+    ("11506-3", "Progress note"),
+]
+
+MEDICATION_REQUEST_CODES = [
+    ("410942007", "Drug or medicament"),
+    ("308335008", "Patient discharge"),
+    ("420848005", "Not applicable"),
+    ("26643006", "Oral route"),
+    ("419652001", "Take"),
+]
+
+OPD_SERVICE_CATEGORY_CODES = [
+    ("17", "General Practice"),
+    ("8", "Counselling"),
+    ("27", "Specialist Medical"),
+    ("35", "Community Health Care"),
+]
+
+OPD_SERVICE_TYPE_CODES = [
+    ("394802001", "General medicine"),
+    ("394814009", "Clinical oncology"),
+    ("394582007", "Dermatology"),
+    ("394587001", "Psychiatry"),
+]
+
+VISIT_MODE_CODES = [
+    ("in-person", "In person"),
+    ("tele", "Telehealth"),
+    ("hybrid", "Hybrid"),
 ]
 
 
@@ -153,6 +234,89 @@ def build_bundle() -> dict:
         "concept": [{"code": code, "display": display} for code, display in DOC_CLASS_CODES],
     }
 
+    snomed_composition = {
+        "resourceType": "CodeSystem",
+        "id": "snomed-composition-minimal",
+        "url": SNOMED,
+        "version": "2024-09-01",
+        "name": "SnomedCompositionMinimal",
+        "title": "SNOMED CT (composition subset)",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+            {"code": code, "display": display}
+            for code, display in (
+                COMPOSITION_SECTION_CODES
+                + COMPOSITION_TYPE_CODES
+                + MEDICATION_REQUEST_CODES
+            )
+        ],
+    }
+
+    diagnostic_service = {
+        "resourceType": "CodeSystem",
+        "id": "v2-0074",
+        "url": DIAGNOSTIC_SERVICE,
+        "version": "2.9",
+        "name": "DiagnosticServiceSection",
+        "title": "Diagnostic Service Section",
+        "status": "active",
+        "content": "complete",
+        "concept": [{"code": "LAB", "display": "Laboratory"}],
+    }
+
+    observation_category = {
+        "resourceType": "CodeSystem",
+        "id": "observation-category",
+        "url": OBS_CATEGORY,
+        "version": "4.0.1",
+        "name": "ObservationCategory",
+        "title": "Observation Category",
+        "status": "active",
+        "content": "complete",
+        "concept": [{"code": "laboratory", "display": "Laboratory"}],
+    }
+
+    service_category = {
+        "resourceType": "CodeSystem",
+        "id": "service-category",
+        "url": SERVICE_CATEGORY,
+        "version": "4.0.1",
+        "name": "ServiceCategory",
+        "title": "Service category",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+            {"code": code, "display": display} for code, display in OPD_SERVICE_CATEGORY_CODES
+        ],
+    }
+
+    snomed_scheduling = {
+        "resourceType": "CodeSystem",
+        "id": "snomed-scheduling-minimal",
+        "url": SNOMED,
+        "version": "2024-09-01",
+        "name": "SnomedSchedulingMinimal",
+        "title": "SNOMED CT (scheduling subset)",
+        "status": "active",
+        "content": "complete",
+        "concept": [
+            {"code": code, "display": display} for code, display in OPD_SERVICE_TYPE_CODES
+        ],
+    }
+
+    visit_mode_cs = {
+        "resourceType": "CodeSystem",
+        "id": "atrius-in-visit-mode-cs",
+        "url": ATRIUS_VISIT_MODE_CS,
+        "version": "0.1.0",
+        "name": "AtriusInVisitModeCS",
+        "title": "Atrius India Core Visit Mode",
+        "status": "active",
+        "content": "complete",
+        "concept": [{"code": code, "display": display} for code, display in VISIT_MODE_CODES],
+    }
+
     atrius_encounter_class_vs = {
         "resourceType": "ValueSet",
         "id": "atrius-in-encounter-class",
@@ -182,6 +346,96 @@ def build_bundle() -> dict:
         },
     }
 
+    composition_section_codes_vs = {
+        "resourceType": "ValueSet",
+        "id": "atrius-in-composition-section-codes",
+        "url": ATRIUS_COMPOSITION_SECTION_CODES_VS,
+        "version": "0.1.0",
+        "name": "AtriusInCompositionSectionCodes",
+        "title": "Atrius India Core Composition Section Codes",
+        "status": "active",
+        "compose": {
+            "include": [
+                {
+                    "system": SNOMED,
+                    "concept": [{"code": code} for code, _ in COMPOSITION_SECTION_CODES],
+                }
+            ]
+        },
+    }
+
+    composition_type_codes_vs = {
+        "resourceType": "ValueSet",
+        "id": "atrius-in-composition-type-codes",
+        "url": ATRIUS_COMPOSITION_TYPE_CODES_VS,
+        "version": "0.1.1",
+        "name": "AtriusInCompositionTypeCodes",
+        "title": "Atrius India Core Composition Type Codes",
+        "status": "active",
+        "compose": {
+            "include": [
+                {
+                    "system": SNOMED,
+                    "concept": [{"code": code} for code, _ in COMPOSITION_TYPE_CODES],
+                },
+                {
+                    "system": LOINC,
+                    "concept": [
+                        {"code": code, "display": display}
+                        for code, display in COMPOSITION_TYPE_LOINC_CODES
+                    ],
+                },
+            ]
+        },
+    }
+
+    opd_service_category_vs = {
+        "resourceType": "ValueSet",
+        "id": "atrius-in-opd-service-category",
+        "url": ATRIUS_OPD_SERVICE_CATEGORY_VS,
+        "version": "0.1.0",
+        "name": "AtriusInOpdServiceCategory",
+        "title": "Atrius India Core OPD Service Category",
+        "status": "active",
+        "compose": {
+            "include": [
+                {
+                    "system": SERVICE_CATEGORY,
+                    "concept": [{"code": code} for code, _ in OPD_SERVICE_CATEGORY_CODES],
+                }
+            ]
+        },
+    }
+
+    opd_service_type_vs = {
+        "resourceType": "ValueSet",
+        "id": "atrius-in-opd-service-type",
+        "url": ATRIUS_OPD_SERVICE_TYPE_VS,
+        "version": "0.1.0",
+        "name": "AtriusInOpdServiceType",
+        "title": "Atrius India Core OPD Service Type",
+        "status": "active",
+        "compose": {
+            "include": [
+                {
+                    "system": SNOMED,
+                    "concept": [{"code": code} for code, _ in OPD_SERVICE_TYPE_CODES],
+                }
+            ]
+        },
+    }
+
+    visit_mode_vs = {
+        "resourceType": "ValueSet",
+        "id": "atrius-in-visit-mode",
+        "url": ATRIUS_VISIT_MODE_VS,
+        "version": "0.1.0",
+        "name": "AtriusInVisitMode",
+        "title": "Atrius India Core Visit Mode",
+        "status": "active",
+        "compose": {"include": [{"system": ATRIUS_VISIT_MODE_CS}]},
+    }
+
     return {
         "resourceType": "Bundle",
         "type": "collection",
@@ -192,8 +446,19 @@ def build_bundle() -> dict:
             {"resource": v2_bed_status},
             {"resource": loinc},
             {"resource": document_class},
+            {"resource": snomed_composition},
+            {"resource": diagnostic_service},
+            {"resource": observation_category},
+            {"resource": service_category},
+            {"resource": snomed_scheduling},
+            {"resource": visit_mode_cs},
             {"resource": atrius_encounter_class_vs},
             {"resource": encounter_participant_type_vs},
+            {"resource": composition_section_codes_vs},
+            {"resource": composition_type_codes_vs},
+            {"resource": opd_service_category_vs},
+            {"resource": opd_service_type_vs},
+            {"resource": visit_mode_vs},
         ],
     }
 

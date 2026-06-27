@@ -30,7 +30,20 @@ ATRIUS_LOCATION = f"{ATRIUS_IG}/Location/atrius-demo-campus"
 
 
 ATRIUS_LOCATION = f"{ATRIUS_IG}/Location/atrius-demo-campus"
-SCHEDULE_ID = "opd-patel-schedule"
+BOOKING_SCHEDULES = [
+    {
+        "id": "opd-patel-schedule",
+        "practitioner_id": "dr-patel",
+        "practitioner_name": {"family": "Patel", "given": ["Anita"], "prefix": ["Dr."]},
+        "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=9;BYMINUTE=0;BYSECOND=0",
+    },
+    {
+        "id": "opd-sharma-schedule",
+        "practitioner_id": "dr-sharma",
+        "practitioner_name": {"family": "Sharma", "given": ["Raj"], "prefix": ["Dr."]},
+        "rrule": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=14;BYMINUTE=0;BYSECOND=0",
+    },
+]
 WARD_ID = "ward-med-a"
 IST = timezone(timedelta(hours=5, minutes=30))
 V2_BED_STATUS = "http://terminology.hl7.org/CodeSystem/v2-0116"
@@ -41,34 +54,76 @@ def iso_instant(dt: datetime) -> str:
     return dt.astimezone(IST).isoformat(timespec="seconds")
 
 
-def slot_entries_for_schedule(schedule_id: str, days: int = 14) -> list[dict]:
-    entries: list[dict] = []
-    today = date.today()
-    for day_offset in range(days):
-        day = today + timedelta(days=day_offset)
-        if day.weekday() >= 6:
-            continue
-        for hour in range(9, 17):
-            for minute in (0, 30):
-                start = datetime(day.year, day.month, day.day, hour, minute, tzinfo=IST)
-                end = start + timedelta(minutes=30)
-                slot_id = f"slot-patel-{day.isoformat()}-{hour:02d}{minute:02d}"
-                entries.append(
-                    {
-                        "fullUrl": f"urn:uuid:{slot_id}",
-                        "resource": {
-                            "resourceType": "Slot",
-                            "id": slot_id,
-                            "meta": {"profile": [f"{ATRIUS_SD}/atrius-in-slot"]},
-                            "schedule": {"reference": f"Schedule/{schedule_id}"},
-                            "status": "free",
-                            "start": iso_instant(start),
-                            "end": iso_instant(end),
-                        },
-                        "request": {"method": "PUT", "url": f"Slot/{slot_id}"},
-                    }
-                )
-    return entries
+def schedule_recurrence_extension(rrule: str) -> dict:
+    return {
+        "url": f"{ATRIUS_SD}/atrius-in-schedule-recurrence",
+        "extension": [
+            {"url": "RRULE", "valueString": rrule},
+            {"url": "TZID", "valueString": "Asia/Kolkata"},
+        ],
+    }
+
+
+def schedule_entry(schedule_id: str, practitioner_id: str, rrule: str) -> dict:
+    return {
+        "fullUrl": f"urn:uuid:{schedule_id}",
+        "resource": {
+            "resourceType": "Schedule",
+            "id": schedule_id,
+            "meta": {"profile": [f"{ATRIUS_SD}/atrius-in-schedule"]},
+            "active": True,
+            "serviceCategory": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/service-category",
+                            "code": "17",
+                            "display": "General Practice",
+                        }
+                    ]
+                }
+            ],
+            "serviceType": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://snomed.info/sct",
+                            "code": "394802001",
+                            "display": "General medicine",
+                        }
+                    ]
+                }
+            ],
+            "actor": [
+                {"reference": f"Practitioner/{practitioner_id}"},
+                {"reference": "Location/atrius-demo-campus"},
+            ],
+            "planningHorizon": {
+                "start": iso_instant(datetime.now(tz=IST).replace(hour=0, minute=0, second=0)),
+                "end": iso_instant(
+                    datetime.now(tz=IST).replace(hour=0, minute=0, second=0)
+                    + timedelta(days=14)
+                ),
+            },
+            "extension": [schedule_recurrence_extension(rrule)],
+        },
+        "request": {"method": "PUT", "url": f"Schedule/{schedule_id}"},
+    }
+
+
+def practitioner_entry(practitioner_id: str, name: dict, gender: str) -> dict:
+    return {
+        "fullUrl": f"urn:uuid:practitioner-{practitioner_id}",
+        "resource": {
+            "resourceType": "Practitioner",
+            "id": practitioner_id,
+            "meta": {"profile": [f"{ATRIUS_SD}/atrius-in-practitioner"]},
+            "active": True,
+            "name": [name],
+            "gender": gender,
+        },
+        "request": {"method": "PUT", "url": f"Practitioner/{practitioner_id}"},
+    }
 
 
 def ward_and_bed_entries() -> list[dict]:
@@ -121,51 +176,6 @@ def ward_and_bed_entries() -> list[dict]:
 
 
 def build_bundle() -> dict:
-    schedule_entry = {
-        "fullUrl": f"urn:uuid:{SCHEDULE_ID}",
-        "resource": {
-            "resourceType": "Schedule",
-            "id": SCHEDULE_ID,
-            "meta": {"profile": [f"{ATRIUS_SD}/atrius-in-schedule"]},
-            "active": True,
-            "serviceCategory": [
-                {
-                    "coding": [
-                        {
-                            "system": "http://terminology.hl7.org/CodeSystem/service-category",
-                            "code": "17",
-                            "display": "General Practice",
-                        }
-                    ]
-                }
-            ],
-            "serviceType": [
-                {
-                    "coding": [
-                        {
-                            "system": "http://snomed.info/sct",
-                            "code": "394802001",
-                            "display": "General medicine",
-                        }
-                    ]
-                }
-            ],
-            "actor": [
-                {"reference": "Practitioner/dr-patel"},
-                {"reference": "HealthcareService/opd-general"},
-                {"reference": "Location/atrius-demo-campus"},
-            ],
-            "planningHorizon": {
-                "start": iso_instant(datetime.now(tz=IST).replace(hour=0, minute=0, second=0)),
-                "end": iso_instant(
-                    datetime.now(tz=IST).replace(hour=0, minute=0, second=0)
-                    + timedelta(days=14)
-                ),
-            },
-        },
-        "request": {"method": "PUT", "url": f"Schedule/{SCHEDULE_ID}"},
-    }
-
     base_entries = [
             {
                 "fullUrl": ATRIUS_ORG,
@@ -226,20 +236,13 @@ def build_bundle() -> dict:
                 },
                 "request": {"method": "PUT", "url": "Location/atrius-demo-campus"},
             },
-            {
-                "fullUrl": "urn:uuid:practitioner-dr-patel",
-                "resource": {
-                    "resourceType": "Practitioner",
-                    "id": "dr-patel",
-                    "meta": {
-                        "profile": [f"{ATRIUS_SD}/atrius-in-practitioner"]
-                    },
-                    "active": True,
-                    "name": [{"family": "Patel", "given": ["Anita"], "prefix": ["Dr."]}],
-                    "gender": "female",
-                },
-                "request": {"method": "PUT", "url": "Practitioner/dr-patel"},
-            },
+        ]
+    for schedule in BOOKING_SCHEDULES:
+        gender = "female" if schedule["practitioner_id"] == "dr-patel" else "male"
+        base_entries.append(
+            practitioner_entry(schedule["practitioner_id"], schedule["practitioner_name"], gender)
+        )
+    base_entries.append(
             {
                 "fullUrl": "urn:uuid:healthcare-service-opd",
                 "resource": {
@@ -266,10 +269,12 @@ def build_bundle() -> dict:
                 },
                 "request": {"method": "PUT", "url": "HealthcareService/opd-general"},
             },
-        ]
+        )
     base_entries.extend(ward_and_bed_entries())
-    base_entries.append(schedule_entry)
-    base_entries.extend(slot_entries_for_schedule(SCHEDULE_ID))
+    for schedule in BOOKING_SCHEDULES:
+        base_entries.append(
+            schedule_entry(schedule["id"], schedule["practitioner_id"], schedule["rrule"])
+        )
 
     return {
         "resourceType": "Bundle",
@@ -299,12 +304,29 @@ def post_bundle(base_url: str, tenant: str, token: str | None, bundle: dict) -> 
         raise SystemExit(1) from exc
 
 
+def expand_schedule_slots(his_url: str, schedule_id: str, from_date: str, to_date: str) -> dict:
+    url = (
+        f"{his_url.rstrip('/')}/api/v1/schedules/{schedule_id}/expand-slots"
+        f"?from={from_date}&to={to_date}"
+    )
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        print(f"Slot expansion failed: HTTP {exc.code}\n{body}", file=sys.stderr)
+        raise SystemExit(1) from exc
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed hospital foundation data")
     parser.add_argument("--base-url", default="http://127.0.0.1:8082")
+    parser.add_argument("--his-url", default="http://127.0.0.1:8096")
     parser.add_argument("--tenant", default="atrius-hospital")
     parser.add_argument("--token", default=None)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--skip-expand", action="store_true")
     args = parser.parse_args()
 
     bundle = build_bundle()
@@ -314,6 +336,24 @@ def main() -> None:
 
     response = post_bundle(args.base_url, args.tenant, args.token, bundle)
     print(json.dumps(response, indent=2))
+
+    if not args.skip_expand:
+        today = date.today()
+        end = today + timedelta(days=14)
+        for schedule in BOOKING_SCHEDULES:
+            schedule_id = schedule["id"]
+            expanded = expand_schedule_slots(
+                args.his_url,
+                schedule_id,
+                today.isoformat(),
+                end.isoformat(),
+            )
+            print(json.dumps(expanded, indent=2), file=sys.stderr)
+            print(
+                f"Expanded {expanded.get('slots_created', 0)} slots for {schedule_id}.",
+                file=sys.stderr,
+            )
+
     print("Seed complete.", file=sys.stderr)
 
 

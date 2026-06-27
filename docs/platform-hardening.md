@@ -18,7 +18,7 @@ Architecture context: [atrius-hfs FHIR-native HIS plan](../../atrius-hfs/docs/hi
 
 ### Infrastructure
 
-- [ ] `./scripts/platform-up.sh` — postgres, elasticsearch, keycloak healthy
+- [ ] Local Keycloak on **https://localhost:8443** — `fhir` realm reachable (`curl -sk …/realms/fhir`)
 - [ ] Env files copied from `deploy/env/*.env.example`
 - [ ] `atrius-hfs` release binaries built (`hfs`, `hts`)
 
@@ -42,7 +42,9 @@ Architecture context: [atrius-hfs FHIR-native HIS plan](../../atrius-hfs/docs/hi
 
 - [ ] `cargo build --release` in this repo
 - [ ] `his-server` `/health` and `/ready` return OK when HFS + HTS up
-- [ ] `HIS_FHIR_BEARER_TOKEN` obtained via `deploy/keycloak/get-token.sh his-backend-client`
+- [ ] BFF forwards user bearer on `/bff/his/*` (not `his-backend-client` for UI)
+- [ ] `HIS_AUTH_ENABLED=true` with Keycloak JWKS (or `HFS_AUTH_*` fallback)
+- [ ] `HIS_FHIR_BEARER_TOKEN` only for offline smoke/seed scripts
 
 ### Seed data
 

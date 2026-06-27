@@ -1,0 +1,17 @@
+[package]
+name = "his-foundation"
+description = "Hospital foundation configuration (org, locations, OPD) for Atrius HIS"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+his-domain = { path = "../his-domain" }
+his-scheduling = { path = "../his-scheduling" }
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

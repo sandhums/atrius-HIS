@@ -14,11 +14,14 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+helios-auth = { path = "../../../atrius-hfs/crates/auth", features = ["redis"] }
 his-domain = { path = "../his-domain" }
 his-registration = { path = "../his-registration" }
 his-scheduling = { path = "../his-scheduling" }
 his-adt = { path = "../his-adt" }
 his-documentation = { path = "../his-documentation" }
+his-orders = { path = "../his-orders" }
+his-foundation = { path = "../his-foundation" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

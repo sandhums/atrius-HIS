@@ -138,6 +138,29 @@ fn display_name(family: &str, given: &[&str]) -> String {
     }
 }
 
+/// Human-readable name from a FHIR Patient resource.
+#[must_use]
+pub fn patient_display_name(patient: &Value) -> Option<String> {
+    let name = patient.get("name")?.as_array()?.first()?;
+    if let Some(text) = name.get("text").and_then(|v| v.as_str()) {
+        if !text.is_empty() {
+            return Some(text.to_string());
+        }
+    }
+    let family = name.get("family").and_then(|v| v.as_str()).unwrap_or("");
+    let given: Vec<&str> = name
+        .get("given")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|g| g.as_str()).collect())
+        .unwrap_or_default();
+    let full = display_name(family, &given);
+    if full.is_empty() {
+        None
+    } else {
+        Some(full)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

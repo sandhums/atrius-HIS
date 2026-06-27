@@ -14,9 +14,15 @@ if [[ -n "${TOKEN}" ]]; then
   auth_args=(-H "Authorization: Bearer ${TOKEN}")
 fi
 
+KEYCLOAK_URL="${KEYCLOAK_URL:-https://localhost:8443}"
+
 echo "== Infrastructure =="
-curl -sf http://127.0.0.1:9200/_cluster/health | python3 -c "import sys,json; h=json.load(sys.stdin); print(f'Elasticsearch: {h[\"status\"]}')"
-curl -sf http://127.0.0.1:8180/realms/fhir >/dev/null && echo "Keycloak realm: ok"
+curl -sf http://127.0.0.1:9200/_cluster/health | python3 -c "import sys,json; h=json.load(sys.stdin); print(f'Elasticsearch: {h[\"status\"]}')" || echo "Elasticsearch: not running (ok if HFS uses postgres-only)"
+if [[ "${KEYCLOAK_URL}" == https://* ]]; then
+  curl -sfk "${KEYCLOAK_URL}/realms/fhir" >/dev/null && echo "Keycloak realm (${KEYCLOAK_URL}): ok"
+else
+  curl -sf "${KEYCLOAK_URL}/realms/fhir" >/dev/null && echo "Keycloak realm (${KEYCLOAK_URL}): ok"
+fi
 
 echo ""
 echo "== HTS =="

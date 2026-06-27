@@ -1,13 +1,29 @@
 use his_domain::{
-    FhirClient, appointment_slot_ids, book_appointment_transaction, build_appointment,
-    cancel_appointment_transaction, reschedule_appointment_transaction, resources_from_search_bundle,
-    slot_timing_from_resource,
+    ExpandError, FhirClient, appointment_location_id, appointment_patient_id, appointment_slot_ids,
+    book_appointment_transaction, build_appointment, cancel_appointment_transaction,
+    expand_schedule_slots, expand_slots_transaction, parse_date_or_datetime, patient_display_name,
+    reschedule_appointment_transaction, resources_from_search_bundle, slot_timing_from_resource,
 };
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::debug;
 
 use crate::error::{SchedulingError, resource_from_transaction_response};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpandSlotsQuery {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExpandSlotsResponse {
+    pub schedule_id: String,
+    pub from: String,
+    pub to: String,
+    pub slots_created: usize,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FindSlotsQuery {
@@ -66,6 +82,47 @@ pub struct RescheduleAppointmentRequest {
     pub new_slot_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PractitionerAppointmentsQuery {
+    pub date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppointmentSummary {
+    pub appointment_id: String,
+    pub patient_id: Option<String>,
+    pub patient_name: Option<String>,
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub status: String,
+    pub description: Option<String>,
+    pub location_id: Option<String>,
+    pub encounter_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PractitionerAppointmentsResponse {
+    pub practitioner_id: String,
+    pub date: String,
+    pub count: usize,
+    pub appointments: Vec<AppointmentSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookingDoctorSummary {
+    pub practitioner_id: String,
+    pub name: String,
+    pub schedule_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListBookingDoctorsResponse {
+    pub count: usize,
+    pub doctors: Vec<BookingDoctorSummary>,
+}
+
 #[derive(Clone)]
 pub struct SchedulingService {
     fhir: FhirClient,
@@ -74,6 +131,100 @@ pub struct SchedulingService {
 impl SchedulingService {
     pub fn new(fhir: FhirClient) -> Self {
         Self { fhir }
+    }
+
+    pub async fn expand_schedule_slots(
+        &self,
+        schedule_id: &str,
+        query: &ExpandSlotsQuery,
+    ) -> Result<ExpandSlotsResponse, SchedulingError> {
+        if query.from.trim().is_empty() || query.to.trim().is_empty() {
+            return Err(SchedulingError::InvalidRequest(
+                "from and to are required".into(),
+            ));
+        }
+
+        let schedule = self
+            .fhir
+            .read_resource("Schedule", schedule_id)
+            .await
+            .map_err(|_| SchedulingError::ScheduleNotFound(schedule_id.to_string()))?;
+
+        let from = parse_date_or_datetime(&query.from, false).map_err(map_expand_error)?;
+        let to = parse_date_or_datetime(&query.to, true).map_err(map_expand_error)?;
+
+        let slots = expand_schedule_slots(&schedule, from, to).map_err(map_expand_error)?;
+        let slots_created = slots.len();
+
+        if !slots.is_empty() {
+            let bundle = expand_slots_transaction(&slots);
+            debug!(schedule_id, slots_created, "expanding schedule slots transaction");
+            self.fhir
+                .post_transaction(&bundle)
+                .await
+                .map_err(SchedulingError::from_fhir)?;
+        }
+
+        Ok(ExpandSlotsResponse {
+            schedule_id: schedule_id.to_string(),
+            from: query.from.clone(),
+            to: query.to.clone(),
+            slots_created,
+        })
+    }
+
+    pub async fn read_schedule(&self, id: &str) -> Result<Value, SchedulingError> {
+        self.fhir
+            .read_resource("Schedule", id)
+            .await
+            .map_err(|_| SchedulingError::ScheduleNotFound(id.to_string()))
+    }
+
+    pub async fn list_booking_doctors(&self) -> Result<ListBookingDoctorsResponse, SchedulingError> {
+        let bundle = self
+            .fhir
+            .search_resources("Schedule", &[("active", "true")])
+            .await
+            .map_err(SchedulingError::from_fhir)?;
+
+        let schedules =
+            resources_from_search_bundle(&bundle).map_err(SchedulingError::from_fhir)?;
+
+        let mut by_practitioner: BTreeMap<String, (String, Option<String>)> = BTreeMap::new();
+        for schedule in schedules {
+            let Some(schedule_id) = schedule.get("id").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let Some(practitioner_id) = schedule_actor_ref(&schedule, "Practitioner/") else {
+                continue;
+            };
+            let location_id = schedule_actor_ref(&schedule, "Location/");
+            by_practitioner
+                .entry(practitioner_id)
+                .or_insert_with(|| (schedule_id.to_string(), location_id));
+        }
+
+        let mut doctors = Vec::with_capacity(by_practitioner.len());
+        for (practitioner_id, (schedule_id, location_id)) in by_practitioner {
+            let name = self
+                .fhir
+                .read_resource("Practitioner", &practitioner_id)
+                .await
+                .ok()
+                .and_then(|p| patient_display_name(&p))
+                .unwrap_or_else(|| practitioner_id.clone());
+
+            doctors.push(BookingDoctorSummary {
+                practitioner_id,
+                name,
+                schedule_id,
+                location_id,
+            });
+        }
+
+        doctors.sort_by(|a, b| a.name.cmp(&b.name));
+        let count = doctors.len();
+        Ok(ListBookingDoctorsResponse { count, doctors })
     }
 
     pub async fn find_available_slots(
@@ -273,6 +424,133 @@ impl SchedulingService {
         self.read_appointment(id).await
     }
 
+    pub async fn list_practitioner_appointments(
+        &self,
+        practitioner_id: &str,
+        query: &PractitionerAppointmentsQuery,
+    ) -> Result<PractitionerAppointmentsResponse, SchedulingError> {
+        if practitioner_id.trim().is_empty() {
+            return Err(SchedulingError::InvalidRequest(
+                "practitioner_id is required".into(),
+            ));
+        }
+        if query.date.trim().is_empty() {
+            return Err(SchedulingError::InvalidRequest("date is required".into()));
+        }
+
+        let date_start = format!("{}T00:00:00", query.date.trim());
+        let date_end = format!("{}T23:59:59", query.date.trim());
+        let practitioner_ref = format!("Practitioner/{practitioner_id}");
+
+        let bundle = self
+            .fhir
+            .search_resources(
+                "Appointment",
+                &[
+                    ("practitioner", practitioner_ref.as_str()),
+                    ("date", &format!("ge{date_start}")),
+                    ("date", &format!("le{date_end}")),
+                ],
+            )
+            .await
+            .map_err(SchedulingError::from_fhir)?;
+
+        let mut appointments =
+            resources_from_search_bundle(&bundle).map_err(SchedulingError::from_fhir)?;
+
+        appointments.retain(|appt| {
+            appt.get("status")
+                .and_then(|v| v.as_str())
+                .is_some_and(|status| status != "cancelled" && status != "entered-in-error")
+        });
+
+        appointments.sort_by(|a, b| {
+            a.get("start")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .cmp(b.get("start").and_then(|v| v.as_str()).unwrap_or(""))
+        });
+
+        let mut summaries = Vec::with_capacity(appointments.len());
+        for appt in appointments {
+            let appointment_id = appt
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let patient_id = appointment_patient_id(&appt);
+            let patient_name = if let Some(ref pid) = patient_id {
+                self.fhir
+                    .read_resource("Patient", pid)
+                    .await
+                    .ok()
+                    .and_then(|patient| patient_display_name(&patient))
+            } else {
+                None
+            };
+            let encounter_id = self
+                .active_encounter_for_appointment(&appointment_id)
+                .await
+                .ok()
+                .flatten();
+
+            summaries.push(AppointmentSummary {
+                appointment_id,
+                patient_id,
+                patient_name,
+                start: appt
+                    .get("start")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                end: appt.get("end").and_then(|v| v.as_str()).map(str::to_string),
+                status: appt
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string(),
+                description: appt
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string),
+                location_id: appointment_location_id(&appt),
+                encounter_id,
+            });
+        }
+
+        let count = summaries.len();
+        Ok(PractitionerAppointmentsResponse {
+            practitioner_id: practitioner_id.to_string(),
+            date: query.date.clone(),
+            count,
+            appointments: summaries,
+        })
+    }
+
+    async fn active_encounter_for_appointment(
+        &self,
+        appointment_id: &str,
+    ) -> Result<Option<String>, SchedulingError> {
+        let bundle = self
+            .fhir
+            .search_resources(
+                "Encounter",
+                &[
+                    ("appointment", &format!("Appointment/{appointment_id}")),
+                    ("status", "in-progress"),
+                ],
+            )
+            .await
+            .map_err(SchedulingError::from_fhir)?;
+
+        let encounters =
+            resources_from_search_bundle(&bundle).map_err(SchedulingError::from_fhir)?;
+        Ok(encounters
+            .first()
+            .and_then(|enc| enc.get("id"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string))
+    }
+
     async fn schedule_ids_for_practitioner(
         &self,
         practitioner_id: &str,
@@ -292,6 +570,25 @@ impl SchedulingService {
             .filter_map(|s| s.get("id").and_then(|v| v.as_str()).map(str::to_string))
             .collect())
     }
+}
+
+fn schedule_actor_ref(schedule: &Value, prefix: &str) -> Option<String> {
+    schedule
+        .get("actor")
+        .and_then(|v| v.as_array())
+        .and_then(|actors| {
+            actors.iter().find_map(|actor| {
+                actor
+                    .get("reference")
+                    .and_then(|v| v.as_str())
+                    .and_then(|r| r.strip_prefix(prefix))
+                    .map(str::to_string)
+            })
+        })
+}
+
+fn map_expand_error(err: ExpandError) -> SchedulingError {
+    SchedulingError::Expand(err.to_string())
 }
 
 fn validate_book_request(req: &BookAppointmentRequest) -> Result<(), SchedulingError> {

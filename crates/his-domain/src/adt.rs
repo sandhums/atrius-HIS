@@ -349,6 +349,72 @@ pub fn admit_transaction(encounter: &Value, bed: &Value, episode: Option<&Value>
     })
 }
 
+/// Appointment id from Encounter.appointment (first reference).
+pub fn encounter_appointment_id(encounter: &Value) -> Option<String> {
+    encounter
+        .get("appointment")
+        .and_then(|a| a.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|ap| ap.get("reference"))
+        .and_then(|r| r.as_str())
+        .and_then(|r| r.strip_prefix("Appointment/"))
+        .map(str::to_string)
+}
+
+/// Finish an in-progress ambulatory encounter and mark the linked appointment fulfilled.
+#[must_use]
+pub fn finish_visit_transaction(encounter: &Value, appointment: &Value) -> Value {
+    let enc_id = encounter
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let appt_id = appointment
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let end = now_datetime();
+
+    let mut finished = encounter.clone();
+    finished["status"] = json!("finished");
+    if let Some(period) = finished.get_mut("period").and_then(|p| p.as_object_mut()) {
+        period.insert("end".into(), json!(end));
+    } else {
+        finished["period"] = json!({ "end": end });
+    }
+    if let Some(locations) = finished.get_mut("location").and_then(|v| v.as_array_mut()) {
+        for loc in locations.iter_mut() {
+            let active = loc.get("status").and_then(|v| v.as_str()) == Some("active")
+                || loc.get("period").and_then(|p| p.get("end")).is_none();
+            if active {
+                loc["status"] = json!("completed");
+                if let Some(period) = loc.get_mut("period").and_then(|p| p.as_object_mut()) {
+                    period.insert("end".into(), json!(end));
+                } else {
+                    loc["period"] = json!({ "end": end });
+                }
+            }
+        }
+    }
+
+    let mut fulfilled = appointment.clone();
+    fulfilled["status"] = json!("fulfilled");
+
+    json!({
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+            {
+                "resource": finished,
+                "request": { "method": "PUT", "url": format!("Encounter/{enc_id}") }
+            },
+            {
+                "resource": fulfilled,
+                "request": { "method": "PUT", "url": format!("Appointment/{appt_id}") }
+            }
+        ]
+    })
+}
+
 /// Transaction: Appointment → arrived + create ambulatory Encounter.
 #[must_use]
 pub fn start_visit_transaction(encounter: &Value, appointment: &Value) -> Value {
@@ -518,6 +584,94 @@ pub fn discharge_transaction(
     })
 }
 
+/// Patient subject reference from an Encounter.
+#[must_use]
+pub fn encounter_patient_id(encounter: &Value) -> Option<String> {
+    encounter
+        .get("subject")
+        .and_then(|s| s.get("reference"))
+        .and_then(|r| r.as_str())
+        .and_then(|r| r.strip_prefix("Patient/"))
+        .map(str::to_string)
+}
+
+/// Attending practitioner from an Encounter participant list.
+#[must_use]
+pub fn encounter_practitioner_id(encounter: &Value) -> Option<String> {
+    encounter
+        .get("participant")
+        .and_then(|v| v.as_array())
+        .and_then(|parts| {
+            parts.iter().find_map(|part| {
+                part.get("individual")
+                    .and_then(|i| i.get("reference"))
+                    .and_then(|r| r.as_str())
+                    .and_then(|r| r.strip_prefix("Practitioner/"))
+                    .map(str::to_string)
+            })
+        })
+}
+
+/// Encounter class code (e.g. `AMB`, `IMP`).
+#[must_use]
+pub fn encounter_class_code(encounter: &Value) -> Option<String> {
+    encounter
+        .get("class")
+        .and_then(|c| c.get("code"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+}
+
+/// Primary human-readable reason from an Encounter.
+#[must_use]
+pub fn encounter_reason_text(encounter: &Value) -> Option<String> {
+    encounter
+        .get("reasonCode")
+        .and_then(|v| v.as_array())
+        .and_then(|codes| codes.first())
+        .and_then(|reason| {
+            reason
+                .get("text")
+                .and_then(|t| t.as_str())
+                .map(str::to_string)
+                .or_else(|| {
+                    reason
+                        .get("coding")
+                        .and_then(|c| c.get(0))
+                        .and_then(|c| c.get("display"))
+                        .and_then(|d| d.as_str())
+                        .map(str::to_string)
+                })
+        })
+}
+
+/// Active location reference (bed or clinic location) on an encounter.
+#[must_use]
+pub fn encounter_active_location_id(encounter: &Value) -> Option<String> {
+    active_bed_id(encounter).or_else(|| {
+        encounter
+            .get("location")
+            .and_then(|v| v.as_array())
+            .and_then(|locs| {
+                locs.iter().rev().find_map(|loc| {
+                    let active = loc.get("status").and_then(|v| v.as_str()) == Some("active")
+                        || loc
+                            .get("period")
+                            .and_then(|p| p.get("end"))
+                            .is_none();
+                    if !active {
+                        return None;
+                    }
+                    loc.get("location")
+                        .and_then(|l| l.get("reference"))
+                        .and_then(|r| r.as_str())
+                        .and_then(|r| r.strip_prefix("Location/"))
+                        .map(str::to_string)
+                })
+            })
+    })
+}
+
 /// Index of the active bed location on an in-progress encounter, if any.
 pub fn active_bed_id(encounter: &Value) -> Option<String> {
     encounter
@@ -610,6 +764,32 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0]["resource"]["status"], "arrived");
         assert_eq!(entries[1]["resource"]["resourceType"], "Encounter");
+    }
+
+    #[test]
+    fn finish_visit_transaction_finishes_encounter_and_fulfills_appointment() {
+        let appt = json!({
+            "resourceType": "Appointment",
+            "id": "appt-1",
+            "status": "arrived"
+        });
+        let enc = build_ambulatory_encounter(
+            "e1",
+            "pat-1",
+            "org-1",
+            "dr-patel",
+            "appt-1",
+            "2026-06-20T09:00:00+05:30",
+            None,
+            None,
+            None,
+        );
+        let bundle = finish_visit_transaction(&enc, &appt);
+        let entries = bundle["entry"].as_array().unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["resource"]["status"], "finished");
+        assert!(entries[0]["resource"]["period"]["end"].is_string());
+        assert_eq!(entries[1]["resource"]["status"], "fulfilled");
     }
 
     #[test]

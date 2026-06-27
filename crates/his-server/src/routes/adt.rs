@@ -7,64 +7,93 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use his_adt::{
     AdmitPatientRequest, AdmitPatientResponse, AdtError, BedBoardQuery, BedBoardResponse,
-    DischargePatientRequest, StartVisitRequest, StartVisitResponse, TransferPatientRequest,
+    DischargePatientRequest, FinishVisitRequest, FinishVisitResponse, PractitionerEncountersQuery,
+    PractitionerEncountersResponse, StartVisitRequest, StartVisitResponse, TransferPatientRequest,
 };
 use serde_json::json;
 
+use crate::request_auth::RequestAuth;
 use crate::state::AppState;
 
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
         .route("/encounters/admit", post(admit_patient))
         .route("/encounters/start-visit", post(start_visit))
+        .route("/encounters/finish-visit", post(finish_visit))
         .route("/encounters/{id}", get(get_encounter))
         .route("/encounters/{id}/transfer", post(transfer_patient))
         .route("/encounters/{id}/discharge", post(discharge_patient))
         .route("/bed-board", get(bed_board))
+        .route("/practitioners/{id}/encounters", get(list_practitioner_encounters))
 }
 
 async fn admit_patient(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Json(req): Json<AdmitPatientRequest>,
 ) -> Result<Json<AdmitPatientResponse>, ApiError> {
-    Ok(Json(state.adt.admit(&req).await?))
+    Ok(Json(state.services(&auth).adt.admit(&req).await?))
 }
 
 async fn start_visit(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Json(req): Json<StartVisitRequest>,
 ) -> Result<Json<StartVisitResponse>, ApiError> {
-    Ok(Json(state.adt.start_visit(&req).await?))
+    Ok(Json(state.services(&auth).adt.start_visit(&req).await?))
+}
+
+async fn finish_visit(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Json(req): Json<FinishVisitRequest>,
+) -> Result<Json<FinishVisitResponse>, ApiError> {
+    Ok(Json(state.services(&auth).adt.finish_visit(&req).await?))
 }
 
 async fn get_encounter(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    Ok(Json(state.adt.read_encounter(&id).await?))
+    Ok(Json(state.services(&auth).adt.read_encounter(&id).await?))
 }
 
 async fn transfer_patient(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
     Json(req): Json<TransferPatientRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    Ok(Json(state.adt.transfer(&id, &req).await?))
+    Ok(Json(state.services(&auth).adt.transfer(&id, &req).await?))
 }
 
 async fn discharge_patient(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Path(id): Path<String>,
     Json(req): Json<DischargePatientRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    Ok(Json(state.adt.discharge(&id, &req).await?))
+    Ok(Json(state.services(&auth).adt.discharge(&id, &req).await?))
 }
 
 async fn bed_board(
     State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
     Query(query): Query<BedBoardQuery>,
 ) -> Result<Json<BedBoardResponse>, ApiError> {
-    Ok(Json(state.adt.bed_board(&query).await?))
+    Ok(Json(state.services(&auth).adt.bed_board(&query).await?))
+}
+
+async fn list_practitioner_encounters(
+    State(state): State<Arc<AppState>>,
+    auth: RequestAuth,
+    Path(id): Path<String>,
+    Query(query): Query<PractitionerEncountersQuery>,
+) -> Result<Json<PractitionerEncountersResponse>, ApiError> {
+    Ok(Json(
+        state.services(&auth).adt.list_practitioner_encounters(&id, &query).await?,
+    ))
 }
 
 #[derive(Debug)]
@@ -125,6 +154,19 @@ impl IntoResponse for ApiError {
                     "message": self.0.to_string(),
                     "appointment_id": appointment_id,
                     "encounter_id": encounter_id
+                })),
+            )
+                .into_response(),
+            AdtError::VisitAlreadyFinished {
+                encounter_id,
+                status,
+            } => (
+                StatusCode::CONFLICT,
+                Json(json!({
+                    "error": "visit_already_finished",
+                    "message": self.0.to_string(),
+                    "encounter_id": encounter_id,
+                    "status": status
                 })),
             )
                 .into_response(),

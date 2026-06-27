@@ -34,6 +34,16 @@ impl FhirClient {
         self
     }
 
+    pub fn with_bearer(mut self, token: impl Into<String>) -> Self {
+        self.bearer_token = Some(token.into());
+        self
+    }
+
+    pub fn with_bearer_opt(mut self, token: Option<String>) -> Self {
+        self.bearer_token = token;
+        self
+    }
+
     pub fn base_url(&self) -> &str {
         &self.base_url
     }

@@ -1,19 +1,19 @@
 use std::env;
-use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
+use axum::middleware;
 use axum::routing::get;
 use axum::{Json, Router};
 use his_domain::{HisConfig, PlatformProbe};
 use serde::Serialize;
 use tracing::info;
 
+mod auth;
+mod request_auth;
 mod routes;
 mod state;
 
-use crate::routes::{adt, documentation, registration, scheduling};
+use crate::routes::{adt, clinical_documents, documentation, foundation, orders, registration, scheduling};
 use crate::state::AppState;
 
 #[derive(Serialize)]
@@ -45,7 +45,32 @@ async fn main() -> anyhow::Result<()> {
     let config = HisConfig::from_env()?;
     config.validate()?;
 
-    let state = Arc::new(AppState::from_config(&config)?);
+    let auth_config = auth::auth_config_from_env();
+    let auth_state = if auth_config.enabled {
+        info!("HIS inbound authentication is ENABLED");
+        Some(Arc::new(auth::init_auth_state(&auth_config).await?))
+    } else {
+        info!("HIS inbound authentication is DISABLED");
+        None
+    };
+
+    let mut app_state = AppState::from_config(&config)?;
+    if let Some(auth) = auth_state.clone() {
+        app_state = app_state.with_auth(auth);
+    }
+    let state = Arc::new(app_state);
+
+    let mut api = registration::routes()
+        .merge(scheduling::routes())
+        .merge(adt::routes())
+        .merge(documentation::routes())
+        .merge(clinical_documents::routes())
+        .merge(orders::routes())
+        .merge(foundation::routes());
+
+    if let Some(auth) = auth_state {
+        api = api.layer(middleware::from_fn_with_state(auth, auth::auth_middleware));
+    }
 
     let app = Router::new()
         .route("/health", get(health))
@@ -53,16 +78,10 @@ async fn main() -> anyhow::Result<()> {
             let config = config.clone();
             move || ready(config.clone())
         }))
-        .nest(
-            "/api/v1",
-            registration::routes()
-                .merge(scheduling::routes())
-                .merge(adt::routes())
-                .merge(documentation::routes()),
-        )
+        .nest("/api/v1", api)
         .with_state(state);
 
-    let addr: SocketAddr = format!("{host}:{port}").parse()?;
+    let addr: std::net::SocketAddr = format!("{host}:{port}").parse()?;
     info!(%addr, "his-server listening");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -77,12 +96,12 @@ async fn health() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
-async fn ready(config: HisConfig) -> impl IntoResponse {
+async fn ready(config: HisConfig) -> impl axum::response::IntoResponse {
     let probe = match PlatformProbe::new(config) {
         Ok(probe) => probe,
         Err(err) => {
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "ready": false, "error": err.to_string() })),
             )
                 .into_response();
@@ -91,9 +110,9 @@ async fn ready(config: HisConfig) -> impl IntoResponse {
 
     let platform = probe.check().await;
     let status = if platform.ready() {
-        StatusCode::OK
+        axum::http::StatusCode::OK
     } else {
-        StatusCode::SERVICE_UNAVAILABLE
+        axum::http::StatusCode::SERVICE_UNAVAILABLE
     };
 
     (
@@ -112,3 +131,5 @@ async fn shutdown_signal() {
         .expect("failed to install CTRL+C handler");
     info!("shutdown signal received");
 }
+
+use axum::response::IntoResponse;

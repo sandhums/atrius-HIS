@@ -1,0 +1,12 @@
+pub mod anesthesia_record;
+pub mod discharge_summary;
+pub mod entry_sliced;
+pub mod immunization_record;
+pub mod invoice_record;
+pub mod op_consult;
+pub mod operative_note;
+pub mod prescription;
+pub mod procedure_note;
+pub mod progress_note;
+pub mod snomed_document;
+pub mod wellness;

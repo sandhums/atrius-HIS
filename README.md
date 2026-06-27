@@ -9,15 +9,22 @@ Full architecture plan: [atrius-hfs/docs/his/fhir-native-his-plan.md](../atrius-
 ```
 atrius-his/
 ├── crates/
-│   ├── his-domain/       # Shared FHIR client, patient builder, platform probes
-│   ├── his-registration/ # Patient registration service
-│   └── his-server/       # HTTP API (/api/v1/patients, health, ready)
+│   ├── his-domain/       # FHIR client, config — [README](crates/his-domain/README.md)
+│   ├── his-registration/ # Patient registration
+│   ├── his-scheduling/   # Appointments, slots
+│   ├── his-adt/          # Encounters, bed board
+│   ├── his-documentation/# Clinical documents
+│   ├── his-orders/       # Lab orders
+│   ├── his-foundation/   # Hospital foundation config
+│   └── his-server/       # HTTP API + JWT auth — [README](crates/his-server/README.md)
 ├── deploy/
-│   ├── docker-compose.yml          # PostgreSQL, Elasticsearch, Keycloak
+│   ├── docker-compose.yml          # Optional postgres + elasticsearch (Keycloak is local :8443)
 │   ├── env/*.env.example           # HFS, HTS, his-server templates
 │   └── keycloak/                   # Dev SMART realm + get-token.sh
 ├── scripts/                        # Platform lifecycle + seed data
 └── docs/platform-hardening.md      # Phase 0 checklist
+
+Auth architecture (BFF + HIS + HFS): [atrius-bff/docs/AUTH_ARCHITECTURE.md](../atrius-bff/docs/AUTH_ARCHITECTURE.md)
 ```
 
 ## Prerequisites
@@ -25,7 +32,9 @@ atrius-his/
 | Dependency | Purpose |
 |------------|---------|
 | [atrius-hfs](../atrius-hfs) (sibling clone) | `hfs` and `hts` binaries |
-| Docker | PostgreSQL, Elasticsearch, Keycloak |
+| Local Postgres `:5432` | `fhir_server` (HFS), `keycloak_db` (Keycloak), `auth_db` (BFF) |
+| Local Keycloak | **https://localhost:8443** — see [deploy/keycloak/README.md](deploy/keycloak/README.md) |
+| Docker (optional) | Elasticsearch / docker Postgres only if needed |
 | Rust 1.90+ | his-server / his-domain |
 
 Set `ATRIUS_HFS_PATH` if your clone is not at `../atrius-hfs`:
@@ -37,6 +46,10 @@ export ATRIUS_HFS_PATH=/path/to/atrius-hfs
 ## Quick start — Phase 0 platform hardening
 
 ### 1. Start infrastructure
+
+Start **local Keycloak** on https://localhost:8443 (Postgres `keycloak_db`).
+
+Optional docker services (Elasticsearch, docker Postgres):
 
 ```bash
 chmod +x scripts/*.sh deploy/keycloak/get-token.sh
@@ -122,6 +135,20 @@ curl -s -X POST http://127.0.0.1:8096/api/v1/patients \
 
 Set `"allow_duplicates": true` to register despite duplicate warnings (default is `false` → HTTP 409).
 
+## Clinical documentation (Phase 5)
+
+With platform services, HFS, HTS, and `his-server` running (and foundation seed loaded):
+
+```bash
+export HIS_FHIR_BEARER_TOKEN=$(./deploy/keycloak/get-token.sh his-backend-client)
+./scripts/smoke-consult-note.sh          # OPD consultation note
+./scripts/smoke-discharge-summary.sh     # IP discharge summary
+./scripts/smoke-clinical-documents.sh    # 8 kinds: prescription, wellness, immunization, invoice, progress, procedure, operative, anesthesia
+./scripts/smoke-lab-orders.sh            # LOINC lab ServiceRequest: place → $validate → revoke
+```
+
+Each documentation script runs create → finalize → `$validate` on HFS → DocumentBundle export where applicable. Lab orders validate the standalone `ServiceRequest` write path (Task fulfillment deferred).
+
 ### Profile validation note
 
 Registration builds **profile-compliant** `atrius-in-patient` resources (identifier with MR type, name, gender). If Clinical HFS has `HFS_PROFILE_VALIDATION_MODE=strict`, writes are validated against the manifest from `./scripts/build-atrius-profile-manifest.sh` in atrius-hfs. Terminology binding checks also require HTS imports — if validation fails, try `warn` mode first while bringing HTS online, or run `$validate` manually:
@@ -141,9 +168,10 @@ curl -s -X POST http://127.0.0.1:8082/Patient/\$validate \
 | Clinical HFS | 8082 | Authoritative FHIR store |
 | HTS | 9091 | Terminology |
 | his-server | 8096 | Domain API |
-| Keycloak | 8180 | SMART dev (`admin` / `admin`) |
-| PostgreSQL | 5432 | `atrius` / `atrius` / `hfs_clinical` |
-| Elasticsearch | 9200 | Search index |
+| Keycloak | 8443 | Local HTTPS (`https://localhost:8443`, Postgres `keycloak_db`) |
+| PostgreSQL (docker) | 5433 | Optional; default DB `hfs_clinical` |
+| PostgreSQL (local) | 5432 | Typical: `fhir_server` (HFS), `auth_db` (BFF authz) |
+| Elasticsearch | 9200 | Search index (when using postgres-elasticsearch) |
 
 ## Next implementation phases
 
@@ -163,5 +191,6 @@ See [docs/platform-hardening.md](./docs/platform-hardening.md) for the Phase 0 c
 |------|------|
 | atrius-hfs | FHIR platform (HFS, HTS, validation, CDS) |
 | AtriusIGDraft | Profile / IG authoring |
-| atrius-bff | SMART gateway + prefetch |
-| atrius-clinical-ui | Clinician UI |
+| atrius-bff | SMART gateway + prefetch + **HIS proxy** |
+| atrius-admin-ui | Front desk UI (register, book, start visit) |
+| atrius-clinical-ui | Clinician UI (SMART launch; separate workspace) |

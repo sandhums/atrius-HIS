@@ -8,6 +8,8 @@ pub enum DocumentationError {
     EncounterNotFound(String),
     #[error("encounter is not active (status={0})")]
     EncounterNotActive(String),
+    #[error("encounter is not inpatient (class={0})")]
+    EncounterNotInpatient(String),
     #[error("composition not found: {0}")]
     CompositionNotFound(String),
     #[error("draft note already exists for encounter {encounter_id} (composition={composition_id})")]
@@ -19,6 +21,8 @@ pub enum DocumentationError {
     CompositionNotEditable(String),
     #[error("composition is not preliminary (status={0})")]
     CompositionNotPreliminary(String),
+    #[error("composition is not final (status={0})")]
+    CompositionNotFinal(String),
     #[error("practitioner not found: {0}")]
     PractitionerNotFound(String),
     #[error("FHIR error: {0}")]

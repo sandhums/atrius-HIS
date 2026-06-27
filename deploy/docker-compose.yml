@@ -1,9 +1,11 @@
 # Local hardened platform stack for Atrius HIS development.
 #
-# Services:
-#   postgres      :5432  — Clinical HFS persistence
-#   elasticsearch :9200  — Search index for HFS
-#   keycloak      :8180  — SMART OAuth2 / JWT (dev realm)
+# Services (default):
+#   postgres      :5433  — Optional docker Postgres (default DB: hfs_clinical)
+#   elasticsearch :9200  — Optional search index (only if HFS uses postgres-elasticsearch)
+#
+# Keycloak: use local server https://localhost:8443 (Postgres keycloak_db) — NOT this compose file.
+# Optional legacy docker Keycloak (:8180, ephemeral DB): profile legacy-docker-keycloak
 #
 # Usage:
 #   docker compose -f deploy/docker-compose.yml up -d
@@ -13,15 +15,15 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: atrius
-      POSTGRES_PASSWORD: atrius
+      POSTGRES_USER: sandhu
+      POSTGRES_PASSWORD: parsons02
       POSTGRES_DB: hfs_clinical
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - his_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U atrius -d hfs_clinical"]
+      test: ["CMD-SHELL", "pg_isready -U sandhu -d hfs_clinical"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -48,6 +50,7 @@ services:
       start_period: 30s
 
   keycloak:
+    profiles: ["legacy-docker-keycloak"]
     image: quay.io/keycloak/keycloak:26.1
     command: start-dev --import-realm
     environment:

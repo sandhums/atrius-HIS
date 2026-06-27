@@ -1,4 +1,6 @@
-use crate::profiles::{ATRIUS_IN_APPOINTMENT, ATRIUS_IN_SLOT};
+use crate::profiles::{
+    ATRIUS_IN_APPOINTMENT, ATRIUS_IN_APPOINTMENT_VISIT_MODE, ATRIUS_IN_SLOT,
+};
 use serde_json::{Value, json};
 
 /// Build a booked Appointment linked to a Slot and participants.
@@ -40,6 +42,10 @@ pub fn build_appointment(
         "slot": [{ "reference": format!("Slot/{}", slot.id) }],
         "start": slot.start,
         "end": slot.end,
+        "extension": [{
+            "url": ATRIUS_IN_APPOINTMENT_VISIT_MODE,
+            "valueCode": "in-person"
+        }],
         "participant": participants,
     });
 
@@ -264,6 +270,11 @@ mod tests {
             None,
         );
         assert_eq!(appt["meta"]["profile"][0], ATRIUS_IN_APPOINTMENT);
+        assert_eq!(
+            appt["extension"][0]["url"],
+            ATRIUS_IN_APPOINTMENT_VISIT_MODE
+        );
+        assert_eq!(appt["extension"][0]["valueCode"], "in-person");
     }
 
     #[test]

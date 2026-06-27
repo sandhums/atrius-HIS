@@ -13,6 +13,7 @@ fn preliminary_op_consult_composition_has_ndhm_shape() {
         exam: Some("Normal neuro exam".into()),
         assessment: Some("Tension headache".into()),
         plan: Some("Analgesia and follow up".into()),
+        ..Default::default()
     };
     let composition = build_consultation_composition(
         "comp-test",

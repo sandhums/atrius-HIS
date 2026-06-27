@@ -3,7 +3,8 @@ mod service;
 
 pub use error::SchedulingError;
 pub use service::{
-    BookAppointmentRequest, BookAppointmentResponse, CancelAppointmentRequest,
-    FindSlotsQuery, FindSlotsResponse, RescheduleAppointmentRequest, SchedulingService,
-    SlotSummary,
+    AppointmentSummary, BookAppointmentRequest, BookAppointmentResponse, BookingDoctorSummary,
+    CancelAppointmentRequest, ExpandSlotsQuery, ExpandSlotsResponse, FindSlotsQuery,
+    FindSlotsResponse, ListBookingDoctorsResponse, PractitionerAppointmentsQuery,
+    PractitionerAppointmentsResponse, RescheduleAppointmentRequest, SchedulingService, SlotSummary,
 };

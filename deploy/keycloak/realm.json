@@ -10,7 +10,278 @@
   "resetPasswordAllowed": false,
   "bruteForceProtected": false,
   "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      { "name": "doctor", "description": "Clinician persona", "composite": false, "clientRole": false },
+      { "name": "nurse", "description": "Nursing persona", "composite": false, "clientRole": false },
+      { "name": "admin", "description": "Organization administrator", "composite": false, "clientRole": false },
+      { "name": "lab", "description": "Laboratory persona", "composite": false, "clientRole": false },
+      { "name": "billing", "description": "Billing persona", "composite": false, "clientRole": false },
+      { "name": "front_desk", "description": "Front desk / PAS persona", "composite": false, "clientRole": false }
+    ]
+  },
   "clientScopes": [
+    {
+      "name": "openid",
+      "description": "OpenID Connect scope for sub",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "profile",
+      "description": "OpenID Connect built-in scope: profile",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "email",
+      "description": "OpenID Connect built-in scope: email",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "launch/patient",
+      "description": "SMART EHR launch patient context",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "launch/encounter",
+      "description": "SMART EHR launch encounter context",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "fhirUser",
+      "description": "Practitioner identity for SMART apps",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Patient.rs",
+      "description": "User read/search Patient",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Encounter.rs",
+      "description": "User read/search Encounter",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Appointment.rs",
+      "description": "User read/search Appointment",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Slot.rs",
+      "description": "User read/search Slot",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Schedule.rs",
+      "description": "User read/search Schedule",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/QuestionnaireResponse.c",
+      "description": "User create QuestionnaireResponse",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/QuestionnaireResponse.rs",
+      "description": "User read/search QuestionnaireResponse",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Condition.rs",
+      "description": "User read/search Condition",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Observation.rs",
+      "description": "User read/search Observation",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Observation.cruds",
+      "description": "User CRUD+search Observation (lab results)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Task.cruds",
+      "description": "User CRUD+search Task (lab fulfillment)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/DiagnosticReport.cruds",
+      "description": "User CRUD+search DiagnosticReport (lab results)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Patient.cruds",
+      "description": "User CRUD+search Patient",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Encounter.cruds",
+      "description": "User CRUD+search Encounter",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Appointment.cruds",
+      "description": "User CRUD+search Appointment",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Composition.cruds",
+      "description": "User CRUD+search Composition (clinical notes)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/ServiceRequest.cruds",
+      "description": "User CRUD+search ServiceRequest (lab orders)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/EpisodeOfCare.cruds",
+      "description": "User CRUD+search EpisodeOfCare (ADT)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Location.rs",
+      "description": "User read/search Location (bed board)",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Organization.rs",
+      "description": "User read/search Organization",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Organization.u",
+      "description": "User update Organization",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/HealthcareService.rs",
+      "description": "User read/search HealthcareService",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
+    {
+      "name": "user/Practitioner.rs",
+      "description": "User read/search Practitioner",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "false"
+      }
+    },
     {
       "name": "system/*.cruds",
       "description": "Full system-level SMART access on all resource types",
@@ -93,6 +364,261 @@
       "protocol": "openid-connect",
       "defaultClientScopes": ["system/*.cruds"],
       "optionalClientScopes": ["system/Patient.rs"]
+    },
+    {
+      "clientId": "atrius-admin-bff",
+      "name": "Atrius Admin BFF",
+      "description": "Confidential OAuth client for admin UI staff login via atrius-bff",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "atrius-admin-bff-secret",
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://127.0.0.1:8084/callback",
+        "http://localhost:8084/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:8084"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5174/login##http://127.0.0.1:5174/login##http://localhost:5173/login##http://127.0.0.1:5173/login"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "fhirUser",
+        "user/Organization.rs",
+        "user/Organization.u",
+        "user/HealthcareService.rs",
+        "user/Location.rs",
+        "user/Practitioner.rs",
+        "user/Patient.cruds",
+        "user/Appointment.cruds",
+        "user/Slot.rs",
+        "user/Schedule.rs",
+        "user/Encounter.cruds"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "organization_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "organization_id",
+            "claim.name": "organization_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "fhirUser",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "fhirUser",
+            "claim.name": "fhirUser",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "atrius-clinical-bff",
+      "name": "Atrius Clinical BFF",
+      "description": "Confidential OAuth client for SMART EHR launch via atrius-bff",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "atrius-clinical-bff-secret",
+      "serviceAccountsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "authorizationServicesEnabled": false,
+      "protocol": "openid-connect",
+      "redirectUris": [
+        "http://127.0.0.1:8084/callback",
+        "http://localhost:8084/callback"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8084",
+        "http://localhost:8084"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5174/login##http://127.0.0.1:5174/login##http://localhost:5173/login##http://127.0.0.1:5173/login"
+      },
+      "defaultClientScopes": [
+        "openid",
+        "profile",
+        "email",
+        "launch/patient",
+        "launch/encounter",
+        "fhirUser",
+        "user/Patient.cruds",
+        "user/Encounter.cruds",
+        "user/Appointment.cruds",
+        "user/Composition.cruds",
+        "user/ServiceRequest.cruds",
+        "user/EpisodeOfCare.cruds",
+        "user/Slot.rs",
+        "user/Schedule.rs",
+        "user/Location.rs",
+        "user/Organization.rs",
+        "user/HealthcareService.rs",
+        "user/Practitioner.rs",
+        "user/QuestionnaireResponse.c",
+        "user/QuestionnaireResponse.rs",
+        "user/Condition.rs",
+        "user/Observation.cruds",
+        "user/Task.cruds",
+        "user/DiagnosticReport.cruds"
+      ],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "organization_id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "organization_id",
+            "claim.name": "organization_id",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "realm roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Org",
+      "lastName": "Admin",
+      "email": "admin.demo@atrius.local",
+      "attributes": {
+        "organization_id": ["atrius-hospital"]
+      },
+      "realmRoles": ["admin"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "frontdesk.demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Front",
+      "lastName": "Desk",
+      "email": "frontdesk.demo@atrius.local",
+      "attributes": {
+        "organization_id": ["atrius-hospital"]
+      },
+      "realmRoles": ["front_desk"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dr.demo",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Anita",
+      "lastName": "Patel",
+      "email": "dr.demo@atrius.local",
+      "attributes": {
+        "organization_id": ["atrius-hospital"],
+        "fhirUser": ["Practitioner/dr-patel"]
+      },
+      "realmRoles": ["doctor"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "dr.sharma",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Raj",
+      "lastName": "Sharma",
+      "email": "dr.sharma@atrius.local",
+      "attributes": {
+        "organization_id": ["atrius-hospital"],
+        "fhirUser": ["Practitioner/dr-sharma"]
+      },
+      "realmRoles": ["doctor"],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "demo",
+          "temporary": false
+        }
+      ]
     }
   ]
 }

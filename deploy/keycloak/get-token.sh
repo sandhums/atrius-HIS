@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Obtain a SMART Backend Services token from the local Keycloak dev instance.
+# Obtain a client-credentials token from local Keycloak (https://localhost:8443 by default).
 #
 # Usage:
 #   ./get-token.sh                          # HFS full-access client
 #   ./get-token.sh his-backend-client       # HIS domain services client
 #   ./get-token.sh hfs-readonly-client      # read-only Patient client
 #
-# Example: export TOKEN=$(./get-token.sh his-backend-client)
+# Example: export HIS_FHIR_BEARER_TOKEN=$(./get-token.sh his-backend-client)
 
 set -euo pipefail
 
-KEYCLOAK_URL="${KEYCLOAK_URL:-http://localhost:8180}"
+KEYCLOAK_URL="${KEYCLOAK_URL:-https://localhost:8443}"
 REALM="${REALM:-fhir}"
 CLIENT_ID="${1:-hfs-backend-client}"
 
@@ -23,9 +23,14 @@ esac
 
 TOKEN_ENDPOINT="${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/token"
 
+CURL_TLS=()
+if [[ "${KEYCLOAK_URL}" == https://* ]]; then
+  CURL_TLS=(-k)
+fi
+
 echo "Requesting token from ${TOKEN_ENDPOINT} (client: ${CLIENT_ID})" >&2
 
-RESPONSE=$(curl -sf -X POST "${TOKEN_ENDPOINT}" \
+RESPONSE=$(curl -sf "${CURL_TLS[@]}" -X POST "${TOKEN_ENDPOINT}" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=client_credentials" \
   --data-urlencode "client_id=${CLIENT_ID}" \
