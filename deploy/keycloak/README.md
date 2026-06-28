@@ -28,6 +28,10 @@ Defaults: `KEYCLOAK_URL=https://localhost:8443`, `curl -k` for self-signed TLS.
 
 Each clinician user needs Keycloak attribute **`fhirUser`** = `Practitioner/{id}` matching the FHIR Practitioner resource id (see seed script). The clinical UI loads that doctor's appointments after sign-in.
 
+**Front desk / admin users** (`frontdesk.demo`, `admin.demo`) do not have `fhirUser` set in [`realm.json`](./realm.json) — the mapper is present but Keycloak **omits empty claims**, so the access token will not include `fhirUser` until you set the user attribute (e.g. `Practitioner/frontdesk` if you create that resource). Audit identity uses OIDC `sub` instead.
+
+The **`fhirUser` client scope** in the token `scope` string (SMART authorization) is separate from the **`fhirUser` JWT claim** — you need both a client **protocol mapper** (Add to access token) and a **user attribute** value.
+
 ## OAuth clients (must exist in `fhir` realm)
 
 | Client | Secret | Used by |
@@ -50,6 +54,22 @@ If staff **Sign in with hospital account** fails (OAuth / scope errors), patch t
 ```
 
 Then restart **atrius-bff** after config changes.
+
+### Access token must include `sub` (HFS audit / auth identity)
+
+HFS and HIS validate the **user access token** forwarded by the BFF — not the id_token. Keycloak puts `sub` on the id_token by default, but **does not copy it to the access token** unless a client protocol mapper sets `access.token.claim=true`.
+
+Symptom: audit events with empty `agent.who`, or `sub` missing in `/bff/dev/tokens` access_token claims while id_token has `sub`.
+
+**Standard token exchange** does not fix this; add the **sub** mapper instead:
+
+```bash
+./deploy/keycloak/bootstrap-bff-scopes-logout.sh
+```
+
+Or in Keycloak Admin → `atrius-clinical-bff` / `atrius-admin-bff` → Client scopes → **sub** mapper → enable **Add to access token**.
+
+After patching, log out and sign in again. Access token should include `"sub": "<user-uuid>"`.
 
 ### Front-channel logout (RP-initiated)
 

@@ -1,5 +1,6 @@
 use his_domain::{
-    Address, BirthPlace, FhirClient, Telecom, build_patient, resources_from_search_bundle,
+    Address, BirthPlace, ChoiceGroup, FhirClient, REGISTRATION_CHOICE_GROUPS, Telecom,
+    build_patient, is_allowed_code, resources_from_search_bundle,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -7,6 +8,22 @@ use tracing::debug;
 
 use crate::error::RegistrationError;
 use crate::mrn::generate_mrn;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodedChoiceDto {
+    pub code: String,
+    pub display: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegistrationChoicesResponse {
+    pub gender: Vec<CodedChoiceDto>,
+    pub telecom_system: Vec<CodedChoiceDto>,
+    pub telecom_use: Vec<CodedChoiceDto>,
+    pub address_use: Vec<CodedChoiceDto>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterPatientRequest {
@@ -101,6 +118,37 @@ impl RegistrationService {
         Self { fhir }
     }
 
+    #[must_use]
+    pub fn registration_choices() -> RegistrationChoicesResponse {
+        let mut gender = Vec::new();
+        let mut telecom_system = Vec::new();
+        let mut telecom_use = Vec::new();
+        let mut address_use = Vec::new();
+
+        for (group, choices) in REGISTRATION_CHOICE_GROUPS {
+            let target = match group {
+                ChoiceGroup::Gender => &mut gender,
+                ChoiceGroup::TelecomSystem => &mut telecom_system,
+                ChoiceGroup::TelecomUse => &mut telecom_use,
+                ChoiceGroup::AddressUse => &mut address_use,
+            };
+            for c in *choices {
+                target.push(CodedChoiceDto {
+                    code: c.code.to_string(),
+                    display: c.display.to_string(),
+                    system: c.system.map(str::to_string),
+                });
+            }
+        }
+
+        RegistrationChoicesResponse {
+            gender,
+            telecom_system,
+            telecom_use,
+            address_use,
+        }
+    }
+
     pub async fn register(&self, req: RegisterPatientRequest) -> Result<RegisterPatientResponse, RegistrationError> {
         validate_request(&req)?;
 
@@ -189,17 +237,75 @@ fn validate_request(req: &RegisterPatientRequest) -> Result<(), RegistrationErro
             "family_name is required".into(),
         ));
     }
+    if req.given_names.is_empty()
+        || req
+            .given_names
+            .iter()
+            .all(|name| name.trim().is_empty())
+    {
+        return Err(RegistrationError::InvalidRequest(
+            "given_names must include at least one non-empty name".into(),
+        ));
+    }
     if req.gender.trim().is_empty() {
         return Err(RegistrationError::InvalidRequest(
             "gender is required".into(),
         ));
     }
-    if !matches!(req.gender.as_str(), "male" | "female" | "other" | "unknown") {
+    if !is_allowed_code(ChoiceGroup::Gender, req.gender.trim()) {
         return Err(RegistrationError::InvalidRequest(format!(
-            "gender must be male, female, other, or unknown (got {})",
+            "gender must be one of: male, female, other, unknown (got {})",
             req.gender
         )));
     }
+    let birth_date = req
+        .birth_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            RegistrationError::InvalidRequest("birth_date is required".into())
+        })?;
+    if !birth_date.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        return Err(RegistrationError::InvalidRequest(
+            "birth_date must be an ISO date (YYYY-MM-DD)".into(),
+        ));
+    }
+
+    for (idx, t) in req.telecom.iter().enumerate() {
+        if t.value.trim().is_empty() {
+            return Err(RegistrationError::InvalidRequest(format!(
+                "telecom[{idx}].value is required when telecom is provided"
+            )));
+        }
+        if !is_allowed_code(ChoiceGroup::TelecomSystem, t.system.trim()) {
+            return Err(RegistrationError::InvalidRequest(format!(
+                "telecom[{idx}].system is not allowed: {}",
+                t.system
+            )));
+        }
+        if !is_allowed_code(ChoiceGroup::TelecomUse, t.use_.trim()) {
+            return Err(RegistrationError::InvalidRequest(format!(
+                "telecom[{idx}].use is not allowed: {}",
+                t.use_
+            )));
+        }
+    }
+
+    for (idx, a) in req.address.iter().enumerate() {
+        if a.line.is_empty() || a.line.iter().all(|l| l.trim().is_empty()) {
+            return Err(RegistrationError::InvalidRequest(format!(
+                "address[{idx}].line must include at least one line"
+            )));
+        }
+        if !is_allowed_code(ChoiceGroup::AddressUse, a.use_.trim()) {
+            return Err(RegistrationError::InvalidRequest(format!(
+                "address[{idx}].use is not allowed: {}",
+                a.use_
+            )));
+        }
+    }
+
     Ok(())
 }
 
@@ -311,6 +417,47 @@ fn dedupe_matches(matches: Vec<DuplicateMatch>) -> Vec<DuplicateMatch> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_missing_birth_date() {
+        let req = RegisterPatientRequest {
+            family_name: "Sharma".into(),
+            given_names: vec!["Priya".into()],
+            gender: "female".into(),
+            birth_date: None,
+            telecom: vec![],
+            address: vec![],
+            birth_place: None,
+            allow_duplicates: false,
+        };
+        assert!(validate_request(&req).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_telecom_system() {
+        let req = RegisterPatientRequest {
+            family_name: "Sharma".into(),
+            given_names: vec!["Priya".into()],
+            gender: "female".into(),
+            birth_date: Some("1990-01-01".into()),
+            telecom: vec![TelecomInput {
+                system: "telegram".into(),
+                value: "+91-9000000000".into(),
+                use_: "mobile".into(),
+            }],
+            address: vec![],
+            birth_place: None,
+            allow_duplicates: false,
+        };
+        assert!(validate_request(&req).is_err());
+    }
+
+    #[test]
+    fn registration_choices_includes_gender() {
+        let choices = RegistrationService::registration_choices();
+        assert!(!choices.gender.is_empty());
+        assert!(choices.gender.iter().any(|c| c.code == "female"));
+    }
 
     #[test]
     fn rejects_empty_family_name() {

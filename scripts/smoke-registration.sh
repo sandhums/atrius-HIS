@@ -23,7 +23,7 @@ PATIENT_PAYLOAD=$(cat <<EOF
   "birth_date": "${BIRTH_DATE}",
   "telecom": [{"system": "phone", "value": "+91-9876543210"}],
   "address": [{
-    "use": "home",
+    "use_": "home",
     "line": ["12 MG Road"],
     "city": "Bengaluru",
     "state": "KA",
@@ -49,7 +49,30 @@ DUPLICATE_CHECK_PAYLOAD=$(cat <<EOF
 EOF
 )
 
-echo "== Duplicate check before register (expect no match) =="
+echo "== Registration coded choices =="
+curl -sf "${HIS_URL}/api/v1/registration/choices" | python3 -c "
+import sys, json
+c = json.load(sys.stdin)
+assert c['gender'], 'gender choices required'
+assert any(g['code'] == 'female' for g in c['gender'])
+print('choices ok:', len(c['gender']), 'gender,', len(c['telecom_system']), 'telecom systems')
+"
+
+echo ""
+echo "== Invalid gender (expect HTTP 400) =="
+set +e
+HTTP=$(curl -s -o /tmp/his-bad-gender.json -w "%{http_code}" -X POST "${HIS_URL}/api/v1/patients" \
+  -H "Content-Type: application/json" \
+  -d '{"family_name":"Bad","given_names":["Test"],"gender":"invalid","birth_date":"1990-01-01"}')
+set -e
+echo "HTTP ${HTTP}"
+python3 -m json.tool /tmp/his-bad-gender.json
+if [[ "${HTTP}" != "400" ]]; then
+  echo "Expected 400 for invalid gender" >&2
+  exit 1
+fi
+
+echo ""
 BEFORE=$(curl -sf -X POST "${HIS_URL}/api/v1/patients/check-duplicates" \
   -H "Content-Type: application/json" \
   -d "${DUPLICATE_CHECK_PAYLOAD}")

@@ -6,7 +6,8 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use his_registration::{
-    DuplicateSummary, RegisterPatientRequest, RegisterPatientResponse, RegistrationError,
+    DuplicateSummary, RegisterPatientRequest, RegisterPatientResponse, RegistrationChoicesResponse,
+    RegistrationError, RegistrationService,
 };
 use serde_json::json;
 
@@ -15,9 +16,14 @@ use crate::state::AppState;
 
 pub fn routes() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/registration/choices", get(registration_choices))
         .route("/patients", post(register_patient))
         .route("/patients/check-duplicates", post(check_duplicates))
         .route("/patients/{id}", get(get_patient))
+}
+
+async fn registration_choices() -> Json<RegistrationChoicesResponse> {
+    Json(RegistrationService::registration_choices())
 }
 
 async fn register_patient(

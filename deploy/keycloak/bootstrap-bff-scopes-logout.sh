@@ -104,6 +104,78 @@ print(json.dumps(c))
   echo "${client_id_name}: scopes + post-logout URIs updated"
 }
 
+ensure_sub_mapper() {
+  local client_id_name="$1"
+  local internal_id
+  internal_id=$(auth "${KEYCLOAK_URL}/admin/realms/${REALM}/clients?clientId=${client_id_name}" \
+    | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')")
+  if [[ -z "${internal_id}" ]]; then
+    echo "${client_id_name}: not found, skipping sub mapper" >&2
+    return
+  fi
+
+  if auth "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${internal_id}/protocol-mappers/models" \
+    | python3 -c "import sys,json; m=json.load(sys.stdin); print('yes' if any(x.get('name')=='sub' for x in m) else 'no')" \
+    | grep -q yes; then
+    echo "${client_id_name}: sub access-token mapper ok"
+    return
+  fi
+
+  auth -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${internal_id}/protocol-mappers/models" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "sub",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-property-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "id",
+        "claim.name": "sub",
+        "jsonType.label": "String",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "userinfo.token.claim": "true"
+      }
+    }' >/dev/null
+  echo "${client_id_name}: added sub access-token mapper"
+}
+
+ensure_fhir_user_mapper() {
+  local client_id_name="$1"
+  local internal_id
+  internal_id=$(auth "${KEYCLOAK_URL}/admin/realms/${REALM}/clients?clientId=${client_id_name}" \
+    | python3 -c "import sys,json; c=json.load(sys.stdin); print(c[0]['id'] if c else '')")
+  if [[ -z "${internal_id}" ]]; then
+    echo "${client_id_name}: not found, skipping fhirUser mapper" >&2
+    return
+  fi
+
+  if auth "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${internal_id}/protocol-mappers/models" \
+    | python3 -c "import sys,json; m=json.load(sys.stdin); print('yes' if any(x.get('name')=='fhirUser' for x in m) else 'no')" \
+    | grep -q yes; then
+    echo "${client_id_name}: fhirUser access-token mapper ok"
+    return
+  fi
+
+  auth -X POST "${KEYCLOAK_URL}/admin/realms/${REALM}/clients/${internal_id}/protocol-mappers/models" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "name": "fhirUser",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-attribute-mapper",
+      "consentRequired": false,
+      "config": {
+        "user.attribute": "fhirUser",
+        "claim.name": "fhirUser",
+        "jsonType.label": "String",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "userinfo.token.claim": "true"
+      }
+    }' >/dev/null
+  echo "${client_id_name}: added fhirUser access-token mapper"
+}
+
 patch_client "atrius-admin-bff" \
   openid profile email fhirUser \
   user/Organization.rs user/Organization.u user/HealthcareService.rs \
@@ -119,5 +191,10 @@ patch_client "atrius-clinical-bff" \
   user/Organization.rs user/HealthcareService.rs user/Practitioner.rs \
   user/QuestionnaireResponse.c user/QuestionnaireResponse.rs \
   user/Condition.rs user/Observation.cruds
+
+ensure_sub_mapper "atrius-admin-bff"
+ensure_sub_mapper "atrius-clinical-bff"
+ensure_fhir_user_mapper "atrius-admin-bff"
+ensure_fhir_user_mapper "atrius-clinical-bff"
 
 echo "Done. Log out of both SPAs and sign in again so new scopes appear in access tokens."

@@ -2,6 +2,7 @@
 
 mod adt;
 mod clinical;
+mod coded_choices;
 mod config;
 mod documentation;
 mod fhir_client;
@@ -21,6 +22,10 @@ pub use adt::{
     finish_episode_of_care, finish_visit_transaction, is_bed_available, now_datetime,
     operational_status_code, primary_episode_of_care_id, start_visit_transaction,
     transfer_transaction,
+};
+pub use coded_choices::{
+    ChoiceGroup, CodedChoice, REGISTRATION_CHOICE_GROUPS, choice_display, choices_for,
+    group_key, is_allowed_code,
 };
 pub use config::HisConfig;
 pub use fhir_client::FhirClient;

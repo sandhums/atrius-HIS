@@ -135,7 +135,33 @@ curl -s -X POST http://127.0.0.1:8096/api/v1/patients \
 
 Set `"allow_duplicates": true` to register despite duplicate warnings (default is `false` → HTTP 409).
 
+### Registration choices and validation
+
+HIS exposes FHIR-aligned coded field options for admin UI dropdowns:
+
+```bash
+curl -s http://127.0.0.1:8096/api/v1/registration/choices | python3 -m json.tool
+```
+
+Returns `gender`, `telecom_system`, `telecom_use`, and `address_use` lists (`code` + `display`). The same codes are enforced in `validate_request` before HFS writes (400 `invalid_request` for unknown codes; missing `birth_date` is rejected).
+
+Admin UI (`atrius-admin-ui` OPD workflow) loads these choices, validates locally, calls `POST /patients/check-duplicates` before register, and supports **Register anyway** with `allow_duplicates: true`. Clinical UI uses the same `CodedSelect` pattern for lab catalog LOINC codes.
+
 ## Clinical documentation (Phase 5)
+
+With platform services, HFS, HTS, and `his-server` running (and foundation seed loaded):
+
+```bash
+export HIS_FHIR_BEARER_TOKEN=$(./deploy/keycloak/get-token.sh his-backend-client)
+./scripts/smoke-consult-note.sh          # OPD consultation note
+./scripts/smoke-discharge-summary.sh     # IP discharge summary
+./scripts/smoke-clinical-documents.sh    # 8 kinds: prescription, wellness, immunization, invoice, progress, procedure, operative, anesthesia
+./scripts/smoke-lab-orders.sh            # LOINC lab ServiceRequest: place → $validate → revoke
+```
+
+Each documentation script runs create → finalize → `$validate` on HFS → DocumentBundle export where applicable. Lab orders validate the standalone `ServiceRequest` write path (Task fulfillment deferred).
+
+### Profile validation note
 
 With platform services, HFS, HTS, and `his-server` running (and foundation seed loaded):
 
